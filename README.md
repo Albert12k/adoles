@@ -30,6 +30,8 @@ O SDK, o modelo de dados, a autenticação por e-mail, as regras de segurança e
 
 O arquivo `.env` é ignorado pelo Git e não será enviado ao GitHub.
 
+O backend em `functions/` também prepara correção segura de quizzes, pontuação de desafios, conquistas automáticas, relatórios por nível de acesso e arquivamento trimestral do hall da fama.
+
 ## Testar o fluxo inicial
 
 Use qualquer nome e e-mail. A senha precisa ter pelo menos 6 caracteres. Para testar o convite, informe qualquer código com 5 ou mais caracteres; o protótipo apresentará a turma demonstrativa **Base Geração**.

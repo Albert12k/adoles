@@ -14,6 +14,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { cloudFunctions, db, storage } from '../config/firebase';
 import type { StudyRecord } from '../domain/models';
+import type { LeadershipReport, Quiz, QuizResult } from '../domain/models';
 
 const requireFirestore = () => {
   if (!db) throw new Error('Firebase ainda não foi configurado.');
@@ -78,4 +79,22 @@ export async function reviewAttendance(recordId: string, reviewerId: string, app
     reviewedBy: reviewerId,
     reviewedAt: serverTimestamp(),
   });
+}
+
+export async function getWeeklyQuiz(classId: string) {
+  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
+  const loadQuiz = httpsCallable<{ classId: string }, Quiz | null>(cloudFunctions, 'getWeeklyQuiz');
+  return (await loadQuiz({ classId })).data;
+}
+
+export async function submitQuizAnswers(quizId: string, answers: number[]) {
+  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
+  const submit = httpsCallable<{ quizId: string; answers: number[] }, QuizResult>(cloudFunctions, 'submitQuiz');
+  return (await submit({ quizId, answers })).data;
+}
+
+export async function getLeadershipReport(scope: { districtId?: string; classId?: string }) {
+  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
+  const report = httpsCallable<typeof scope, LeadershipReport>(cloudFunctions, 'getLeadershipReport');
+  return (await report(scope)).data;
 }

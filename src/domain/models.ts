@@ -105,5 +105,36 @@ export interface ScoreEntry {
   createdAt: string;
 }
 
+export interface QuizQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+}
+
+export interface Quiz {
+  id: string;
+  classId: string;
+  title: string;
+  questions: QuizQuestion[];
+  releaseAt: string;
+  closesAt: string;
+}
+
+export interface QuizResult {
+  attemptId: string;
+  correctAnswers: number;
+  totalQuestions: number;
+  points: number;
+}
+
+export interface LeadershipReport {
+  activeStudents: number;
+  activeClasses: number;
+  studies: number;
+  approvedAttendance: number;
+  totalPoints: number;
+  generatedAt: string;
+}
+
 export const normalizedClassScore = (totalPoints: number, activeMembers: number) =>
   activeMembers > 0 ? Math.round((totalPoints / activeMembers) * 100) / 100 : 0;

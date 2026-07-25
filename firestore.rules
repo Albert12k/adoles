@@ -99,5 +99,30 @@ service cloud.firestore {
       allow update: if admin() || roleIs('coordinator') ||
         (roleIs('director') && resource.data.classIds.hasAny(profile().classIds));
     }
+
+    match /quizzes/{quizId} {
+      allow read: if directorOf(resource.data.classId) || admin();
+      allow create: if directorOf(request.resource.data.classId) || admin();
+      allow update, delete: if directorOf(resource.data.classId) || admin();
+    }
+
+    match /quizAttempts/{attemptId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
+        directorOf(resource.data.classId) || admin());
+    }
+
+    match /muralPosts/{postId} {
+      allow read: if signedIn();
+      allow update: if signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
+    }
+
+    match /badges/{badgeId} {
+      allow read: if signedIn();
+    }
+
+    match /hallOfFame/{entryId} {
+      allow read: if signedIn();
+    }
   }
 }

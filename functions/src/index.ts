@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { DocumentData, FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
@@ -138,4 +138,138 @@ export const detectLowEngagement = onSchedule({ schedule: '0 8 * * 1', timeZone:
     active: true,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true })));
+});
+
+export const getWeeklyQuiz = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para acessar o quiz.');
+  const classId = String(request.data?.classId ?? '');
+  const profile = await db.collection('users').doc(request.auth.uid).get();
+  const classIds = (profile.data()?.classIds ?? []) as string[];
+  if (!classIds.includes(classId)) throw new HttpsError('permission-denied', 'Você não pertence a esta classe.');
+
+  const quizzes = await db.collection('quizzes')
+    .where('classId', '==', classId)
+    .where('active', '==', true)
+    .orderBy('releaseAt', 'desc')
+    .limit(1)
+    .get();
+  if (quizzes.empty) return null;
+  const item = quizzes.docs[0];
+  const quiz = item.data();
+  const now = Date.now();
+  if (quiz.releaseAt?.toMillis() > now || quiz.closesAt?.toMillis() < now) return null;
+  return {
+    id: item.id,
+    classId: quiz.classId,
+    title: quiz.title,
+    releaseAt: quiz.releaseAt.toDate().toISOString(),
+    closesAt: quiz.closesAt.toDate().toISOString(),
+    questions: (quiz.questions ?? []).map((question: Record<string, unknown>, index: number) => ({
+      id: String(question.id ?? index),
+      prompt: question.prompt,
+      options: question.options,
+    })),
+  };
+});
+
+export const submitQuiz = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para responder.');
+  const quizId = String(request.data?.quizId ?? '');
+  const answers = request.data?.answers as number[] | undefined;
+  if (!quizId || !Array.isArray(answers)) throw new HttpsError('invalid-argument', 'Respostas inválidas.');
+  const quizRef = db.collection('quizzes').doc(quizId);
+  const attemptRef = db.collection('quizAttempts').doc(`${quizId}_${request.auth.uid}`);
+
+  return db.runTransaction(async transaction => {
+    const [quizSnapshot, attemptSnapshot, profileSnapshot] = await Promise.all([
+      transaction.get(quizRef), transaction.get(attemptRef), transaction.get(db.collection('users').doc(request.auth!.uid)),
+    ]);
+    if (!quizSnapshot.exists) throw new HttpsError('not-found', 'Quiz não encontrado.');
+    if (attemptSnapshot.exists) throw new HttpsError('already-exists', 'Este quiz já foi respondido.');
+    const quiz = quizSnapshot.data()!;
+    if (!((profileSnapshot.data()?.classIds ?? []) as string[]).includes(quiz.classId)) throw new HttpsError('permission-denied', 'Quiz indisponível.');
+    const questions = (quiz.questions ?? []) as Array<{ correctIndex: number }>;
+    if (answers.length !== questions.length) throw new HttpsError('invalid-argument', 'Responda todas as perguntas.');
+    const correctAnswers = questions.reduce((total, question, index) => total + (question.correctIndex === answers[index] ? 1 : 0), 0);
+    const points = correctAnswers * Number(quiz.pointsPerQuestion ?? 10);
+    transaction.create(attemptRef, { quizId, userId: request.auth!.uid, classId: quiz.classId, answers, correctAnswers, totalQuestions: questions.length, points, createdAt: FieldValue.serverTimestamp() });
+    transaction.set(db.collection('scores').doc(`quiz_${quizId}_${request.auth!.uid}`), { userId: request.auth!.uid, classId: quiz.classId, districtId: quiz.districtId ?? '', ageGroup: quiz.ageGroup ?? 'adolescentes', source: 'quiz', points, createdAt: FieldValue.serverTimestamp() });
+    return { attemptId: attemptRef.id, correctAnswers, totalQuestions: questions.length, points };
+  });
+});
+
+export const approveChallenge = onDocumentUpdated({ document: 'challenges/{challengeId}', region }, async event => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after || before.status === 'approved' || after.status !== 'approved') return;
+  const batch = db.batch();
+  batch.set(db.collection('scores').doc(`challenge_${event.params.challengeId}`), { classId: after.classId, districtId: after.districtId, ageGroup: after.ageGroup ?? 'adolescentes', source: 'challenge', points: Number(after.bonusPoints ?? 0), createdAt: FieldValue.serverTimestamp() });
+  batch.set(db.collection('muralPosts').doc(`challenge_${event.params.challengeId}`), { classId: after.classId, districtId: after.districtId, type: 'challenge', title: after.title, body: 'Desafio aprovado pelo distrito!', evidenceUrl: after.evidenceUrl ?? null, reactions: {}, createdAt: FieldValue.serverTimestamp() });
+  await batch.commit();
+});
+
+export const awardAutomaticBadges = onDocumentCreated({ document: 'scores/{scoreId}', region }, async event => {
+  const score = event.data?.data();
+  if (!score?.userId) return;
+  const userScores = await db.collection('scores').where('userId', '==', score.userId).get();
+  const totalPoints = userScores.docs.reduce((total, item) => total + Number(item.data().points ?? 0), 0);
+  const studyCount = userScores.docs.filter(item => item.data().source === 'study').length;
+  const badges = [
+    ...(studyCount >= 5 ? [{ key: 'reader_5', title: 'Leitor constante', description: 'Completou cinco estudos.' }] : []),
+    ...(totalPoints >= 100 ? [{ key: 'points_100', title: 'Primeiros 100', description: 'Conquistou 100 pontos.' }] : []),
+    ...(totalPoints >= 500 ? [{ key: 'points_500', title: 'Jornada de ouro', description: 'Conquistou 500 pontos.' }] : []),
+  ];
+  for (const badge of badges) {
+    const badgeRef = db.collection('badges').doc(`${score.userId}_${badge.key}`);
+    const created = await db.runTransaction(async transaction => {
+      const existing = await transaction.get(badgeRef);
+      if (existing.exists) return false;
+      transaction.create(badgeRef, { userId: score.userId, ...badge, earnedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+    if (created) await db.collection('notifications').add({ userId: score.userId, type: 'badge', title: `Nova conquista: ${badge.title}`, body: badge.description, read: false, createdAt: FieldValue.serverTimestamp() });
+  }
+});
+
+export const getLeadershipReport = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profileSnapshot = await db.collection('users').doc(request.auth.uid).get();
+  const profile = profileSnapshot.data();
+  if (!profile || !['admin', 'coordinator', 'director'].includes(profile.role)) throw new HttpsError('permission-denied', 'Acesso exclusivo da liderança.');
+  const requestedClassId = String(request.data?.classId ?? '');
+  const requestedDistrictId = String(request.data?.districtId ?? '');
+  if (profile.role === 'director' && requestedClassId && !(profile.classIds ?? []).includes(requestedClassId)) throw new HttpsError('permission-denied', 'Classe não autorizada.');
+  if (profile.role === 'coordinator' && requestedDistrictId && profile.districtId !== requestedDistrictId) throw new HttpsError('permission-denied', 'Distrito não autorizado.');
+
+  let allowedClassIds: string[];
+  if (profile.role === 'director') {
+    allowedClassIds = requestedClassId ? [requestedClassId] : (profile.classIds ?? []);
+  } else {
+    const districtScope = profile.role === 'coordinator' ? profile.districtId : requestedDistrictId;
+    const classQuery = districtScope ? db.collection('classes').where('districtId', '==', districtScope) : db.collection('classes').where('active', '==', true);
+    const classes = await classQuery.get();
+    allowedClassIds = classes.docs.map(item => item.id);
+  }
+  const [users, studies, attendance, scores] = await Promise.all([
+    db.collection('users').where('role', '==', 'student').where('active', '==', true).get(),
+    db.collection('studyRecords').get(), db.collection('attendance').where('status', '==', 'approved').get(), db.collection('scores').get(),
+  ]);
+  const belongs = (data: DocumentData) => allowedClassIds.includes(data.classId);
+  return {
+    activeStudents: users.docs.filter(item => ((item.data().classIds ?? []) as string[]).some(id => allowedClassIds.includes(id))).length,
+    activeClasses: allowedClassIds.length,
+    studies: studies.docs.filter(item => belongs(item.data())).length,
+    approvedAttendance: attendance.docs.filter(item => belongs(item.data())).length,
+    totalPoints: scores.docs.filter(item => belongs(item.data())).reduce((total, item) => total + Number(item.data().points ?? 0), 0),
+    generatedAt: new Date().toISOString(),
+  };
+});
+
+export const archiveQuarterHallOfFame = onSchedule({ schedule: '0 2 1 1,4,7,10 *', timeZone: 'America/Bahia', region }, async () => {
+  const rankings = await db.collection('classRankings').orderBy('normalizedScore', 'desc').limit(20).get();
+  const now = new Date();
+  const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+  const quarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
+  const year = currentQuarter === 1 ? now.getFullYear() - 1 : now.getFullYear();
+  await Promise.all(rankings.docs.map((item, index) => db.collection('hallOfFame').doc(`${year}_Q${quarter}_${item.id}`).set({ year, quarter, classId: item.id, place: index + 1, ...item.data(), archivedAt: FieldValue.serverTimestamp() })));
 });
