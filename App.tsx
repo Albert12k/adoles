@@ -121,6 +121,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
 function StudyScreen() {
   const [completed, setCompleted] = useState(false);
+  const [summary, setSummary] = useState('');
   return (
     <View style={styles.pagePad}>
       <Text style={styles.pageEyebrow}>ESTUDO SEMANAL</Text>
@@ -141,14 +142,21 @@ function StudyScreen() {
           <Text style={styles.chevron}>›</Text>
         </Pressable>
       ))}
+      <View style={styles.summaryCard}>
+        <Text style={styles.authLabel}>Meu resumo de hoje</Text>
+        <Text style={styles.privateHint}>🔒 Somente você e seu diretor podem visualizar.</Text>
+        <TextInput multiline value={summary} onChangeText={setSummary} placeholder="O que mais chamou sua atenção?" placeholderTextColor="#8A9892" style={[styles.authInput, styles.summaryInput]} />
+        <Text style={styles.charCount}>{summary.length}/500</Text>
+      </View>
       <Pressable style={[styles.primaryButton, completed && styles.buttonDone]} onPress={() => setCompleted(!completed)}>
-        <Text style={styles.primaryButtonText}>{completed ? '✓ Estudo registrado' : 'Registrar estudo de hoje'}</Text>
+        <Text style={styles.primaryButtonText}>{completed ? '✓ Estudo e resumo registrados' : 'Registrar estudo de hoje'}</Text>
       </Pressable>
     </View>
   );
 }
 
 function AttendanceScreen() {
+  const [sent, setSent] = useState(false);
   return (
     <View style={styles.pagePad}>
       <Text style={styles.pageEyebrow}>TRIMESTRE 3 · SEMANA 7</Text>
@@ -168,6 +176,8 @@ function AttendanceScreen() {
         <View style={styles.stat}><Text style={styles.statValue}>54%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>+70</Text><Text style={styles.cardCaption}>pontos</Text></View>
       </View>
+      <Pressable style={[styles.primaryButton, sent && styles.buttonDone]} onPress={() => setSent(true)}><Text style={styles.primaryButtonText}>{sent ? '✓ Presença enviada para aprovação' : '📷 Enviar foto da presença'}</Text></Pressable>
+      {sent && <Text style={styles.pendingHint}>Seu diretor receberá a foto e confirmará seu avanço na trilha.</Text>}
     </View>
   );
 }
@@ -197,13 +207,15 @@ function QuizScreen() {
 }
 
 function ProfileScreen() {
-  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios'>('hub');
+  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes'>('hub');
   if (communityView !== 'hub') {
     const content = {
       ranking: { title: 'Rankings', eyebrow: 'PONTUAÇÃO DO TRIMESTRE', copy: 'Classificação normalizada para valorizar participação, não o tamanho da classe.' },
       mural: { title: 'Mural', eyebrow: 'NOSSA COMUNIDADE', copy: 'Conquistas e desafios aprovados da sua turma.' },
       flashcards: { title: 'Flashcards', eyebrow: 'IDEIAS PARA GUARDAR', copy: 'Seus lembretes da lição, Bíblia e livro.' },
       desafios: { title: 'Desafios', eyebrow: 'MISSÃO DO MÊS', copy: 'Participe com toda a sua classe e some pontos.' },
+      hall: { title: 'Hall da fama', eyebrow: 'TRIMESTRES ANTERIORES', copy: 'Quem deixou sua marca na história da turma.' },
+      notificacoes: { title: 'Notificações', eyebrow: 'FIQUE POR DENTRO', copy: 'Atualizações importantes da sua jornada.' },
     }[communityView];
     return (
       <View style={styles.pagePad}>
@@ -218,6 +230,8 @@ function ProfileScreen() {
         </>}
         {communityView === 'flashcards' && <View style={styles.flashGrid}>{[['A fé cresce quando é exercitada.', '#FFF1A8'], ['Josué 1:9 — coragem não é ausência de medo.', '#CFEDE5'], ['Servir também é uma forma de adorar.', '#FFD9CE'], ['Pergunta para o sábado: como aplicar isso?', '#DCE0FA']].map(([text, bg], index) => <View key={text} style={[styles.flashCard, { backgroundColor: bg, transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>NOTA {index + 1}</Text><Text style={styles.flashText}>{text}</Text></View>)}</View>}
         {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
+        {communityView === 'hall' && <>{[['🥇', 'Marina Costa', 'Campeã · Trimestre 2', '1.860 pts'], ['🥈', 'João Pedro', 'Vice-campeão · Trimestre 2', '1.720 pts'], ['🏆', 'Base Geração', 'Classe destaque do distrito', '92%']].map(([icon, name, copy, points]) => <View key={name} style={styles.hallCard}><Text style={styles.hallIcon}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.rankPoints}>{points}</Text></View>)}</>}
+        {communityView === 'notificacoes' && <>{[['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias']].map(([tag, title, copy], index) => <View key={title} style={[styles.notificationCard, index === 0 && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{index === 0 && <View style={styles.unreadDot} />}</View>)}</>}
       </View>
     );
   }
@@ -237,7 +251,7 @@ function ProfileScreen() {
       <Text style={styles.sectionTitle}>Comunidade</Text>
       <View style={styles.communityGrid}>
         {[
-          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'],
+          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'], ['hall', '★', 'Hall da fama', '#E4E0FA'], ['notificacoes', '●', 'Notificações', '#DCEDE9'],
         ].map(([key, icon, label, bg]) => <Pressable key={key} style={[styles.communityCard, { backgroundColor: bg }]} onPress={() => setCommunityView(key as typeof communityView)}><Text style={styles.communityIcon}>{icon}</Text><Text style={styles.communityLabel}>{label}</Text><Text style={styles.communityLink}>Abrir ›</Text></Pressable>)}
       </View>
       <Text style={styles.sectionTitle}>Conquistas</Text>
@@ -452,6 +466,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [lessonTitle, setLessonTitle] = useState('Escolhas que transformam');
   const [question, setQuestion] = useState('Quem recebeu a missão de conduzir o povo após Moisés?');
   const [approved, setApproved] = useState<string[]>([]);
+  const [memberNotice, setMemberNotice] = useState('');
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -459,6 +474,8 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const isReport = title.includes('Relatório');
   const isEvent = title.includes('Encontros');
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
+  const isRisk = title.includes('Acompanhamento');
+  const isMembers = title.includes('membros');
 
   return (
     <View>
@@ -495,9 +512,14 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
         ].map(([name, copy, percent]) => <Pressable key={name} style={styles.structureCard}><View style={styles.structureIcon}><Text style={styles.structureIconText}>⌂</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.structurePercent}>{percent}</Text><Text style={styles.chevron}>›</Text></Pressable>)}
         <Pressable style={styles.outlineButton}><Text style={styles.outlineButtonText}>＋ Adicionar novo cadastro</Text></Pressable>
       </>}
-      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && <>
+      {isRisk && <>{[
+        ['Lucas Rocha', 'Sem presença há 3 semanas', 'ALTO', colors.coral], ['Beatriz Souza', 'Sem estudo há 2 semanas', 'MÉDIO', colors.gold], ['Rafael Lima', 'Queda de 35% no engajamento', 'MÉDIO', colors.gold],
+      ].map(([name, copy, level, color]) => <View key={name} style={styles.riskCard}><View style={[styles.riskLine, { backgroundColor: color }]} /><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><View><Text style={[styles.riskLevel, { color }]}>{level}</Text><Pressable onPress={() => setMemberNotice(`Lembrete preparado para ${name}`)}><Text style={styles.contactLink}>Lembrar</Text></Pressable></View></View>)}</>}
+      {memberNotice !== '' && <Text style={styles.successNotice}>✓ {memberNotice}</Text>}
+      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && <>
         <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>VIVA-7429</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton}><Text style={styles.copyButtonText}>Copiar código</Text></Pressable></View>
-        {['Marina Costa', 'João Pedro', 'Daniel Oliveira', 'Sara Lima'].map((name, index) => <View key={name} style={styles.memberRow}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{index === 0 ? 'Diretora auxiliar' : 'Membro ativo'}</Text></View><Text style={styles.chevron}>⋮</Text></View>)}
+        {['Marina Costa', 'João Pedro', 'Daniel Oliveira', 'Sara Lima'].map((name, index) => <View key={name} style={styles.memberRow}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{index === 0 ? 'Diretora auxiliar' : 'Membro ativo'}</Text></View><Pressable onPress={() => setMemberNotice(`Ações abertas para ${name}`)}><Text style={styles.memberMenu}>•••</Text></Pressable></View>)}
+        {isMembers && <View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => setMemberNotice('Transferência de liderança preparada')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => setMemberNotice('Acesso selecionado para revogação')}><Text style={styles.memberDangerText}>Revogar acesso</Text></Pressable></View>}
       </>}
       {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={() => setSaved(true)}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
@@ -520,6 +542,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
       ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', '3'],
+      ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', '3'],
       ['✦', 'Flashcards publicados', 'Moderar cards enviados pela turma', '4'],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
     ]
@@ -609,10 +632,12 @@ const styles = StyleSheet.create({
   rankingTabs: { flexDirection: 'row', backgroundColor: '#E1E9E4', borderRadius: 14, padding: 4, marginBottom: 13 }, rankingTab: { flex: 1, textAlign: 'center', color: colors.muted, fontSize: 10, fontWeight: '800', paddingVertical: 9 }, rankingTabActive: { flex: 1, textAlign: 'center', color: colors.white, backgroundColor: colors.tealMedium, borderRadius: 10, overflow: 'hidden', fontSize: 10, fontWeight: '900', paddingVertical: 9 }, rankRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 16, padding: 12, marginBottom: 8 }, rankRowCurrent: { borderWidth: 2, borderColor: colors.gold, backgroundColor: '#FFF9EC' }, rankPlace: { width: 28, color: colors.teal, fontSize: 16, fontWeight: '900' }, rankAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginRight: 10 }, rankAvatarText: { color: colors.teal, fontWeight: '900' }, rankName: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: '800' }, rankPoints: { color: '#9A6815', fontSize: 11, fontWeight: '900' },
   feedCard: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 18, padding: 15, marginBottom: 11 }, feedEmoji: { width: 42, fontSize: 25 }, reactions: { color: colors.coral, fontSize: 12, marginTop: 12, letterSpacing: 5 }, flashGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, flashCard: { width: '47%', minHeight: 150, borderRadius: 4, padding: 15, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }, flashLabel: { color: colors.muted, fontSize: 8, fontWeight: '900', letterSpacing: 1 }, flashText: { color: colors.ink, fontSize: 13, lineHeight: 20, fontWeight: '700', marginTop: 12 },
   challengeCard: { backgroundColor: colors.white, borderRadius: 22, padding: 18 }, challengeTitle: { color: colors.ink, fontSize: 23, fontWeight: '900', marginTop: 17 }, challengeCopy: { color: colors.muted, fontSize: 13, lineHeight: 20, marginTop: 8 }, challengeMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 8 }, challengePoints: { color: colors.coral, fontSize: 13, fontWeight: '900' }, challengeStatus: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 12, overflow: 'hidden', padding: 11, fontSize: 9, fontWeight: '800', marginTop: 13 },
+  hallCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 14, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: colors.gold }, hallIcon: { width: 43, fontSize: 25 }, notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 14, marginBottom: 9 }, notificationUnread: { backgroundColor: '#FFF8E9', borderWidth: 1, borderColor: '#EED49D' }, notificationTag: { color: colors.coral, backgroundColor: '#FBE0D6', borderRadius: 9, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 5, fontSize: 7, fontWeight: '900', marginRight: 10 }, unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.coral, marginLeft: 8 },
   uploadBox: { minHeight: 130, borderRadius: 18, borderWidth: 2, borderStyle: 'dashed', borderColor: '#B9C9C2', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F6F8F5', marginBottom: 15 }, uploadIcon: { color: colors.coral, fontSize: 28, fontWeight: '600' }, uploadTitle: { color: colors.ink, fontSize: 13, fontWeight: '900', marginTop: 4 }, uploadCopy: { color: colors.muted, fontSize: 9, marginTop: 4 }, scheduleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.white, borderRadius: 17, padding: 15, marginBottom: 11 }, toggleOn: { width: 44, height: 25, borderRadius: 13, backgroundColor: colors.tealMedium, padding: 3, alignItems: 'flex-end' }, toggleKnob: { width: 19, height: 19, borderRadius: 10, backgroundColor: colors.white }, formCard: { backgroundColor: colors.white, borderRadius: 18, padding: 15, marginBottom: 12 }, textArea: { height: 82, paddingTop: 13, textAlignVertical: 'top', marginBottom: 12 }, quizEditOption: { minHeight: 49, flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: colors.sage, padding: 7, marginBottom: 7, borderWidth: 1, borderColor: 'transparent' }, quizEditCorrect: { backgroundColor: '#E1F0E9', borderColor: colors.tealMedium }, correctLabel: { color: colors.tealMedium, fontSize: 8, fontWeight: '900', marginLeft: 'auto', marginRight: 7 }, addQuestion: { minHeight: 43, alignItems: 'center', justifyContent: 'center', marginTop: 5 }, addQuestionText: { color: colors.coral, fontSize: 11, fontWeight: '900' }, approvalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 12, marginBottom: 9 }, approveButton: { backgroundColor: '#FBE0D6', borderRadius: 11, paddingHorizontal: 10, paddingVertical: 8 }, approveButtonDone: { backgroundColor: '#DCEDE9' }, approveButtonText: { color: colors.coral, fontSize: 9, fontWeight: '900' }, approveButtonTextDone: { color: colors.tealMedium }, inviteCodeCard: { backgroundColor: colors.teal, borderRadius: 20, padding: 18, marginBottom: 14 }, inviteCode: { color: colors.gold, fontSize: 28, fontWeight: '900', letterSpacing: 3, marginVertical: 12 }, copyButton: { alignSelf: 'flex-start', backgroundColor: colors.white, borderRadius: 11, paddingHorizontal: 12, paddingVertical: 8, marginTop: 13 }, copyButtonText: { color: colors.teal, fontSize: 10, fontWeight: '900' }, memberRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 15, padding: 11, marginBottom: 8 },
   reportHero: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal, borderRadius: 20, padding: 18, marginBottom: 13 }, reportValue: { color: colors.gold, fontSize: 31, fontWeight: '900', marginRight: 17 }, reportTitle: { color: colors.white, fontSize: 13, fontWeight: '900' }, reportCopy: { color: '#BFD2CD', fontSize: 9, marginTop: 4 }, reportRow: { backgroundColor: colors.white, borderRadius: 15, padding: 14, marginBottom: 8 }, reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }, reportPercent: { color: colors.teal, fontSize: 12, fontWeight: '900' }, exportButton: { minHeight: 52, borderRadius: 16, backgroundColor: colors.coral, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, exportButtonText: { color: colors.white, fontSize: 12, fontWeight: '900' },
   eventCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal, borderRadius: 20, padding: 16, marginBottom: 14 }, eventDate: { width: 58, height: 65, borderRadius: 15, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 14 }, eventDay: { color: colors.teal, fontSize: 25, fontWeight: '900' }, eventMonth: { color: colors.teal, fontSize: 9, fontWeight: '900' }, eventTitle: { color: colors.white, fontSize: 15, fontWeight: '900' }, eventCopy: { color: '#BFD2CD', fontSize: 10, marginTop: 4 }, eventPeople: { color: colors.gold, fontSize: 9, fontWeight: '800', marginTop: 8 },
   searchBox: { height: 50, borderRadius: 15, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, marginBottom: 12 }, searchIcon: { color: colors.teal, fontSize: 20, marginRight: 10 }, searchPlaceholder: { color: '#8A9892', fontSize: 11 }, structureCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 12, marginBottom: 9 }, structureIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginRight: 11 }, structureIconText: { color: colors.teal, fontSize: 17, fontWeight: '900' }, structurePercent: { color: colors.tealMedium, fontSize: 11, fontWeight: '900' }, outlineButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: colors.coral, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, outlineButtonText: { color: colors.coral, fontSize: 11, fontWeight: '900' },
+  riskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 12, marginBottom: 9, overflow: 'hidden' }, riskLine: { width: 4, alignSelf: 'stretch', borderRadius: 3, marginRight: 10 }, riskLevel: { fontSize: 8, fontWeight: '900', textAlign: 'right' }, contactLink: { color: colors.tealMedium, fontSize: 9, fontWeight: '900', marginTop: 7 }, successNotice: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 13, overflow: 'hidden', padding: 11, textAlign: 'center', fontSize: 9, fontWeight: '800', marginBottom: 10 }, memberMenu: { color: colors.teal, fontSize: 16, fontWeight: '900', padding: 8 }, memberActions: { flexDirection: 'row', gap: 8, marginTop: 6 }, memberActionButton: { flex: 1, minHeight: 44, borderRadius: 13, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center' }, memberActionText: { color: colors.teal, fontSize: 9, fontWeight: '900' }, memberDangerButton: { flex: 1, minHeight: 44, borderRadius: 13, backgroundColor: '#FBE0D6', alignItems: 'center', justifyContent: 'center' }, memberDangerText: { color: colors.coral, fontSize: 9, fontWeight: '900' },
   shell: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: colors.sage },
   scroll: { flex: 1 }, content: { paddingBottom: 28 }, flex: { flex: 1 },
   hero: { backgroundColor: colors.teal, paddingHorizontal: 22, paddingTop: 25, paddingBottom: 42, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
@@ -648,6 +673,7 @@ const styles = StyleSheet.create({
   pageTitle: { color: colors.ink, fontSize: 27, lineHeight: 35, fontWeight: '900', marginTop: 7 }, pageIntro: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, marginBottom: 20 },
   studyCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, padding: 14, marginBottom: 11 },
   studyIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, studyEmoji: { fontSize: 21 }, studyLabel: { color: colors.coral, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }, studyTitle: { color: colors.ink, fontSize: 15, fontWeight: '800', marginVertical: 3 }, cardCaption: { color: colors.muted, fontSize: 11, lineHeight: 16 }, chevron: { color: colors.tealMedium, fontSize: 28 },
+  summaryCard: { backgroundColor: colors.white, borderRadius: 18, padding: 15, marginTop: 3 }, privateHint: { color: colors.tealMedium, fontSize: 9, marginBottom: 10 }, summaryInput: { height: 110, textAlignVertical: 'top', paddingTop: 13 }, charCount: { color: colors.muted, fontSize: 8, textAlign: 'right', marginTop: 5 }, pendingHint: { color: colors.tealMedium, fontSize: 9, lineHeight: 14, textAlign: 'center', marginTop: 10 },
   primaryButton: { backgroundColor: colors.coral, borderRadius: 16, minHeight: 52, alignItems: 'center', justifyContent: 'center', marginTop: 13 }, primaryButtonText: { color: colors.white, fontSize: 14, fontWeight: '900' }, buttonDone: { backgroundColor: colors.tealMedium }, buttonDisabled: { opacity: 0.4 },
   mountainCard: { height: 380, backgroundColor: '#DCEDE9', borderRadius: 24, overflow: 'hidden', position: 'relative', marginBottom: 14 },
   trail: { position: 'absolute', top: 62, bottom: 25, left: '49%', width: 5, borderRadius: 4, backgroundColor: '#B8CFC7', transform: [{ rotate: '12deg' }] }, summit: { position: 'absolute', top: 20, alignSelf: 'center', backgroundColor: colors.gold, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 }, summitText: { color: colors.teal, fontSize: 10, fontWeight: '900' },
