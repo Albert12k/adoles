@@ -1,0 +1,29 @@
+# VIVA IASD
+
+Primeiro protótipo funcional do aplicativo para adolescentes e pré-adolescentes da IASD.
+
+## O que já está navegável
+
+- Home com verso do dia, sequência de estudos e progresso semanal
+- Estudo semanal com lição, Bíblia e livro
+- Corrida de presença com trilha trimestral
+- Quiz interativo
+- Perfil com pontos, posição e conquistas
+- Boas-vindas, criação de conta e login demonstrativo
+- Escolha entre adolescente, diretor, coordenador e administrador
+- Entrada do adolescente na turma por código de convite
+
+Os dados e a autenticação desta versão são demonstrativos. A persistência das contas, aprovações e conteúdos será conectada ao Firebase nas próximas etapas.
+
+## Testar o fluxo inicial
+
+Use qualquer nome e e-mail. A senha precisa ter pelo menos 6 caracteres. Para testar o convite, informe qualquer código com 5 ou mais caracteres; o protótipo apresentará a turma demonstrativa **Base Geração**.
+
+## Executar
+
+```bash
+npm install
+npm start
+```
+
+Abra o projeto com o aplicativo Expo Go pelo QR code apresentado no terminal.

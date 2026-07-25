@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "app-iasd-adolescentes",
+    "name": "VIVA IASD",
     "slug": "app-iasd-adolescentes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#EEF2ED",
     "ios": {
       "supportsTablet": true
     },
