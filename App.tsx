@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  ActivityIndicator,
   Platform,
   Pressable,
   SafeAreaView,
@@ -12,8 +13,9 @@ import {
   View,
 } from 'react-native';
 import { firebaseEnabled } from './src/config/firebase';
-import { getUserRole, loginUser, registerUser } from './src/services/auth';
+import { getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import { requestClassEntry } from './src/services/data';
+import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -211,6 +213,7 @@ function QuizScreen() {
 
 function ProfileScreen() {
   const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes'>('hub');
+  const live = useLiveDashboard();
   if (communityView !== 'hub') {
     const content = {
       ranking: { title: 'Rankings', eyebrow: 'PONTUAÇÃO DO TRIMESTRE', copy: 'Classificação normalizada para valorizar participação, não o tamanho da classe.' },
@@ -226,7 +229,7 @@ function ProfileScreen() {
         <Text style={styles.pageEyebrow}>{content.eyebrow}</Text><Text style={styles.pageTitle}>{content.title}</Text><Text style={styles.pageIntro}>{content.copy}</Text>
         {communityView === 'ranking' && <>
           <View style={styles.rankingTabs}><Text style={styles.rankingTabActive}>Classe</Text><Text style={styles.rankingTab}>Distrito</Text><Text style={styles.rankingTab}>Turmas</Text></View>
-          {[['1', 'Marina Costa', '510'], ['2', 'João Pedro', '465'], ['3', 'Daniel Oliveira', '420'], ['4', 'Sara Lima', '398'], ['5', 'Lucas Rocha', '372']].map(([place, name, points]) => <View key={place} style={[styles.rankRow, place === '3' && styles.rankRowCurrent]}><Text style={styles.rankPlace}>{place}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><Text style={styles.rankName}>{name}</Text><Text style={styles.rankPoints}>{points} pts</Text></View>)}
+          {(live.rankings.length > 0 ? live.rankings.map((item, index) => [String(index + 1), item.className, String(item.normalizedScore)]) : [['1', 'Marina Costa', '510'], ['2', 'João Pedro', '465'], ['3', 'Daniel Oliveira', '420'], ['4', 'Sara Lima', '398'], ['5', 'Lucas Rocha', '372']]).map(([place, name, points]) => <View key={`${place}_${name}`} style={[styles.rankRow, place === '3' && styles.rankRowCurrent]}><Text style={styles.rankPlace}>{place}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><Text style={styles.rankName}>{name}</Text><Text style={styles.rankPoints}>{points} pts</Text></View>)}
         </>}
         {communityView === 'mural' && <>
           {[['🏆', 'Marina conquistou “Leitora do mês”', 'Há 2 horas · 12 reações'], ['🔥', 'João completou 6 semanas seguidas', 'Ontem · 8 reações'], ['◆', 'Desafio solidário aprovado!', 'A Base Geração ganhou +100 pontos']].map(([icon, title, copy]) => <View key={title} style={styles.feedCard}><Text style={styles.feedEmoji}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text><Text style={styles.reactions}>♥  🙌  ⚡</Text></View></View>)}
@@ -234,7 +237,7 @@ function ProfileScreen() {
         {communityView === 'flashcards' && <View style={styles.flashGrid}>{[['A fé cresce quando é exercitada.', '#FFF1A8'], ['Josué 1:9 — coragem não é ausência de medo.', '#CFEDE5'], ['Servir também é uma forma de adorar.', '#FFD9CE'], ['Pergunta para o sábado: como aplicar isso?', '#DCE0FA']].map(([text, bg], index) => <View key={text} style={[styles.flashCard, { backgroundColor: bg, transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>NOTA {index + 1}</Text><Text style={styles.flashText}>{text}</Text></View>)}</View>}
         {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
         {communityView === 'hall' && <>{[['🥇', 'Marina Costa', 'Campeã · Trimestre 2', '1.860 pts'], ['🥈', 'João Pedro', 'Vice-campeão · Trimestre 2', '1.720 pts'], ['🏆', 'Base Geração', 'Classe destaque do distrito', '92%']].map(([icon, name, copy, points]) => <View key={name} style={styles.hallCard}><Text style={styles.hallIcon}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.rankPoints}>{points}</Text></View>)}</>}
-        {communityView === 'notificacoes' && <>{[['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias']].map(([tag, title, copy], index) => <View key={title} style={[styles.notificationCard, index === 0 && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{index === 0 && <View style={styles.unreadDot} />}</View>)}</>}
+        {communityView === 'notificacoes' && <>{(live.notifications.length > 0 ? live.notifications.map(item => [item.type.toUpperCase(), item.title, item.body, item.read ? 'read' : 'unread']) : [['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora', 'unread'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h', 'read'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem', 'read'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias', 'read']]).map(([tag, title, copy, status]) => <View key={`${tag}_${title}`} style={[styles.notificationCard, status === 'unread' && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{status === 'unread' && <View style={styles.unreadDot} />}</View>)}</>}
       </View>
     );
   }
@@ -247,7 +250,7 @@ function ProfileScreen() {
         <Text style={styles.profileStatus}>“Vivendo com propósito.”</Text>
       </View>
       <View style={styles.statsRow}>
-        <View style={styles.stat}><Text style={styles.statValue}>420</Text><Text style={styles.cardCaption}>pontos</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{live.points ?? 420}</Text><Text style={styles.cardCaption}>pontos</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>#3</Text><Text style={styles.cardCaption}>na classe</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>4</Text><Text style={styles.cardCaption}>semanas</Text></View>
       </View>
@@ -339,6 +342,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [inviteState, setInviteState] = useState<'idle' | 'valid'>('idle');
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState('');
 
   const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
   const finishRegistration = async (selectedRole: Role) => {
@@ -364,6 +368,14 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'E-mail ou senha inválidos.');
     } finally { setAuthBusy(false); }
+  };
+  const recoverPassword = async () => {
+    if (!firebaseEnabled) return setAuthMessage('No modo demonstrativo, nenhuma conta real precisa ser recuperada.');
+    if (!email.includes('@')) return setAuthError('Informe seu e-mail antes de recuperar a senha.');
+    setAuthBusy(true); setAuthError(''); setAuthMessage('');
+    try { await resetUserPassword(email); setAuthMessage('Enviamos o link de recuperação para o seu e-mail.'); }
+    catch (error) { setAuthError(error instanceof Error ? error.message : 'Não foi possível enviar o e-mail.'); }
+    finally { setAuthBusy(false); }
   };
 
   const validateInvite = () => {
@@ -462,7 +474,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           {!isLogin && <AuthField label="Nome" placeholder="Como você quer ser chamado?" value={name} onChangeText={setName} />}
           <AuthField label="E-mail" placeholder="voce@exemplo.com" value={email} onChangeText={setEmail} />
           <AuthField label="Senha" placeholder="Mínimo de 6 caracteres" secure value={password} onChangeText={setPassword} />
-          {isLogin && <Pressable><Text style={styles.forgotLink}>Esqueci minha senha</Text></Pressable>}
+          {isLogin && <Pressable onPress={recoverPassword}><Text style={styles.forgotLink}>Esqueci minha senha</Text></Pressable>}
           <Pressable
             style={[styles.authPrimary, (email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)) && styles.buttonDisabled]}
             disabled={email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)}
@@ -473,6 +485,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           <Pressable onPress={() => setStep(isLogin ? 'register' : 'login')}><Text style={styles.authSwitch}>{isLogin ? 'Ainda não tem conta? ' : 'Já tem uma conta? '}<Text style={styles.authSwitchStrong}>{isLogin ? 'Cadastre-se' : 'Entrar'}</Text></Text></Pressable>
           <View style={styles.demoBox}><Text style={styles.demoText}>Protótipo: use qualquer e-mail e uma senha com 6 caracteres.</Text></View>
           {authError !== '' && <Text style={styles.authError}>{authError}</Text>}
+          {authMessage !== '' && <Text style={styles.authSuccess}>{authMessage}</Text>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -631,9 +644,21 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
 
 export default function App() {
   const [activeRole, setActiveRole] = useState<Role | null>(null);
+  const [authReady, setAuthReady] = useState(!firebaseEnabled);
+  useEffect(() => {
+    if (!firebaseEnabled) return;
+    return subscribeToAuth(async user => {
+      if (!user) { setActiveRole(null); setAuthReady(true); return; }
+      const savedRole = await getUserRole(user.uid);
+      setActiveRole(savedRole === 'director' ? 'diretor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
+      setAuthReady(true);
+    });
+  }, []);
+  const exit = async () => { if (firebaseEnabled) await logoutUser(); setActiveRole(null); };
+  if (!authReady) return <SafeAreaView style={styles.loadingScreen}><ActivityIndicator size="large" color={colors.gold} /><Text style={styles.loadingText}>Preparando sua jornada...</Text></SafeAreaView>;
   if (!activeRole) return <AuthFlow onComplete={setActiveRole} />;
-  if (activeRole === 'adolescente') return <MainApp onExit={() => setActiveRole(null)} />;
-  return <ManagementApp role={activeRole} onExit={() => setActiveRole(null)} />;
+  if (activeRole === 'adolescente') return <MainApp onExit={exit} />;
+  return <ManagementApp role={activeRole} onExit={exit} />;
 }
 
 const styles = StyleSheet.create({
@@ -655,6 +680,7 @@ const styles = StyleSheet.create({
   authPrimary: { minHeight: 55, backgroundColor: colors.coral, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginTop: 9 }, authPrimaryText: { color: colors.white, fontSize: 14, fontWeight: '900' }, forgotLink: { color: colors.coral, fontSize: 12, fontWeight: '800', textAlign: 'right', marginTop: -6, marginBottom: 8 },
   authSwitch: { textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 22 }, authSwitchStrong: { color: colors.coral, fontWeight: '900' }, demoBox: { padding: 12, borderRadius: 13, backgroundColor: '#E0E9E4', marginTop: 24 }, demoText: { color: colors.muted, fontSize: 10, textAlign: 'center' },
   authError: { color: '#A33A1D', backgroundColor: '#FBE0D6', borderRadius: 12, overflow: 'hidden', padding: 10, textAlign: 'center', fontSize: 10, marginTop: 12 },
+  authSuccess: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 12, overflow: 'hidden', padding: 10, textAlign: 'center', fontSize: 10, marginTop: 12 }, loadingScreen: { flex: 1, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' }, loadingText: { color: colors.white, fontSize: 12, fontWeight: '800', marginTop: 14 },
   roleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', padding: 14, marginBottom: 10 }, roleCardActive: { borderColor: colors.coral, backgroundColor: '#FFF8F5' }, roleIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E4ECE8', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, roleIconActive: { backgroundColor: colors.coral }, roleIconText: { color: colors.teal, fontSize: 18, fontWeight: '900' }, roleIconTextActive: { color: colors.white }, roleTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' }, roleCopy: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 3, maxWidth: 250 }, radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B4C1BC', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }, radioActive: { borderColor: colors.coral }, radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.coral }, approvalHint: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12 },
   inviteIllustration: { width: 80, height: 80, borderRadius: 25, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginBottom: 23 }, inviteIllustrationText: { color: colors.tealMedium, fontSize: 44, fontWeight: '900' }, classFound: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCEDE9', borderRadius: 16, padding: 14, marginTop: -4, marginBottom: 10 }, classFoundIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 11 }, classFoundTitle: { color: colors.teal, fontSize: 14, fontWeight: '900' }, classFoundCopy: { color: colors.muted, fontSize: 10, marginTop: 2 }, skipLink: { color: colors.tealMedium, fontSize: 12, fontWeight: '800', textAlign: 'center', marginTop: 21 },
   managementHero: { backgroundColor: colors.teal, padding: 22, paddingBottom: 28, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, managementTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, managementGreeting: { color: colors.white, fontSize: 26, fontWeight: '900', marginTop: 3 }, managementScope: { color: '#BFD2CD', fontSize: 13, marginTop: 18 }, classSelector: { alignSelf: 'flex-start', backgroundColor: colors.tealMedium, borderWidth: 1, borderColor: '#43736E', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 13 }, classSelectorText: { color: colors.white, fontSize: 11, fontWeight: '800' }, managementContent: { padding: 20, paddingBottom: 30 },

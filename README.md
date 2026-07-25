@@ -32,6 +32,10 @@ O arquivo `.env` é ignorado pelo Git e não será enviado ao GitHub.
 
 O backend em `functions/` também prepara correção segura de quizzes, pontuação de desafios, conquistas automáticas, relatórios por nível de acesso e arquivamento trimestral do hall da fama.
 
+## Testes locais com Firebase Emulator
+
+Com o Firebase CLI instalado, execute `firebase emulators:start` na raiz do projeto. Em outro terminal, execute `npm --prefix functions run seed`. A interface dos emuladores ficará em `http://localhost:4000` e a classe demonstrativa usará o código `VIVA-7429`.
+
 ## Testar o fluxo inicial
 
 Use qualquer nome e e-mail. A senha precisa ter pelo menos 6 caracteres. Para testar o convite, informe qualquer código com 5 ou mais caracteres; o protótipo apresentará a turma demonstrativa **Base Geração**.

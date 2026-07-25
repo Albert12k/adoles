@@ -1,4 +1,4 @@
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import type { UserRole } from '../domain/models';
@@ -39,6 +39,16 @@ export async function loginUser(email: string, password: string) {
 export async function logoutUser() {
   const services = requireFirebase();
   await signOut(services.auth);
+}
+
+export async function resetUserPassword(email: string) {
+  const services = requireFirebase();
+  await sendPasswordResetEmail(services.auth, email.trim().toLowerCase());
+}
+
+export function subscribeToAuth(callback: (user: User | null) => void) {
+  if (!auth) return () => undefined;
+  return onAuthStateChanged(auth, callback);
 }
 
 export async function getUserRole(userId: string): Promise<UserRole> {

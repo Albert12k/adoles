@@ -111,6 +111,7 @@ export const rebuildClassRankings = onSchedule({ schedule: '0 3 * * *', timeZone
     const activeMembers = Math.max(Number(data.activeMemberCount ?? 0), 1);
     batch.set(db.collection('classRankings').doc(item.id), {
       classId: item.id,
+      className: data.name,
       districtId: data.districtId,
       ageGroup: data.ageGroup,
       totalPoints,

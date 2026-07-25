@@ -1,5 +1,8 @@
 import { FirebaseApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth, Persistence } from 'firebase/auth';
+import * as nativeAuth from '@firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 import { Functions, getFunctions } from 'firebase/functions';
@@ -23,7 +26,18 @@ let cloudFunctions: Functions | null = null;
 
 if (firebaseEnabled) {
   app = getApps()[0] ?? initializeApp(config);
-  auth = getAuth(app);
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    try {
+      const persistenceFactory = (nativeAuth as typeof nativeAuth & {
+        getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
+      }).getReactNativePersistence;
+      auth = initializeAuth(app, { persistence: persistenceFactory(AsyncStorage) });
+    } catch {
+      auth = getAuth(app);
+    }
+  }
   db = getFirestore(app);
   storage = getStorage(app);
   cloudFunctions = getFunctions(app, 'southamerica-east1');
