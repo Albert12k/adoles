@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function roleIs(role) { return signedIn() && profile().role == role; }
+    function admin() { return roleIs('admin'); }
+    function coordinatorOf(districtId) { return admin() || (roleIs('coordinator') && profile().districtId == districtId); }
+    function directorOf(classId) { return admin() || (roleIs('director') && classId in profile().classIds); }
+    function memberOf(classId) { return signedIn() && classId in profile().classIds; }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || admin() ||
+        (resource.data.classIds.hasAny(profile().classIds) && roleIs('director')));
+      allow create: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
+      allow update: if admin() || (request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status']));
+    }
+
+    match /districts/{districtId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+
+    match /churches/{churchId} {
+      allow read: if signedIn();
+      allow write: if admin() || coordinatorOf(request.resource.data.districtId);
+    }
+
+    match /classes/{classId} {
+      allow read: if signedIn();
+      allow create: if admin() || coordinatorOf(request.resource.data.districtId);
+      allow update: if admin() || coordinatorOf(resource.data.districtId) ||
+        (directorOf(classId) && request.resource.data.districtId == resource.data.districtId &&
+          request.resource.data.churchId == resource.data.churchId &&
+          request.resource.data.directorIds == resource.data.directorIds);
+    }
+
+    match /weeklyContent/{contentId} {
+      allow read: if memberOf(resource.data.classId);
+      allow create: if directorOf(request.resource.data.classId);
+      allow update, delete: if directorOf(resource.data.classId);
+    }
+
+    match /studyRecords/{recordId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && memberOf(request.resource.data.classId);
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
+      allow update: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
+    }
+
+    match /attendance/{recordId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && memberOf(request.resource.data.classId);
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
+      allow update: if directorOf(resource.data.classId);
+    }
+
+    match /challenges/{challengeId} {
+      allow read: if signedIn();
+      allow create: if directorOf(request.resource.data.classId);
+      allow update: if directorOf(resource.data.classId) || coordinatorOf(resource.data.districtId);
+    }
+
+    match /scores/{scoreId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+  }
+}
