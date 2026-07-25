@@ -82,5 +82,22 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if admin();
     }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+
+    match /classRankings/{classId} {
+      allow read: if signedIn();
+    }
+
+    match /engagementAlerts/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || admin() || roleIs('coordinator') ||
+        (roleIs('director') && resource.data.classIds.hasAny(profile().classIds)));
+      allow update: if admin() || roleIs('coordinator') ||
+        (roleIs('director') && resource.data.classIds.hasAny(profile().classIds));
+    }
   }
 }

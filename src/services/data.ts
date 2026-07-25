@@ -11,7 +11,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { cloudFunctions, db, storage } from '../config/firebase';
 import type { StudyRecord } from '../domain/models';
 
 const requireFirestore = () => {
@@ -20,13 +21,10 @@ const requireFirestore = () => {
 };
 
 export async function requestClassEntry(userId: string, inviteCode: string) {
-  const firestore = requireFirestore();
-  return addDoc(collection(firestore, 'classJoinRequests'), {
-    userId,
-    inviteCode: inviteCode.trim().toUpperCase(),
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
+  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
+  if (!userId) throw new Error('Entre na sua conta para usar o convite.');
+  const joinClass = httpsCallable<{ inviteCode: string }, { classId: string; className: string }>(cloudFunctions, 'joinClassByCode');
+  return (await joinClass({ inviteCode: inviteCode.trim().toUpperCase() })).data;
 }
 
 export async function listWeeklyContent(classId: string) {

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { firebaseEnabled } from './src/config/firebase';
 import { getUserRole, loginUser, registerUser } from './src/services/auth';
+import { requestClassEntry } from './src/services/data';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -344,7 +345,10 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
     try {
-      await registerUser(name, email, password, mapRole(selectedRole));
+      const user = await registerUser(name, email, password, mapRole(selectedRole));
+      if (selectedRole === 'adolescente' && invite.trim().length >= 5) {
+        await requestClassEntry(user.uid, invite);
+      }
       onComplete(selectedRole === 'adolescente' ? 'adolescente' : selectedRole);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Não foi possível criar a conta.');

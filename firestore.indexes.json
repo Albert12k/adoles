@@ -4,6 +4,8 @@
     { "collectionGroup": "attendance", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "scores", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "ageGroup", "order": "ASCENDING" }, { "fieldPath": "points", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "weeklyContent", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "publishedAt", "order": "DESCENDING" }] }
+    ,{ "collectionGroup": "classes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "inviteCode", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "users", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "role", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }
