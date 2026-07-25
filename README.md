@@ -12,6 +12,10 @@ Primeiro protótipo funcional do aplicativo para adolescentes e pré-adolescente
 - Boas-vindas, criação de conta e login demonstrativo
 - Escolha entre adolescente, diretor, coordenador e administrador
 - Entrada do adolescente na turma por código de convite
+- Mural, rankings, desafios mensais e flashcards
+- Painel do diretor com conteúdo, quiz, avaliações e presença
+- Painel distrital com aprovações, classes, encontros e relatórios
+- Painel administrativo com distritos, igrejas, classes e coordenadores
 
 Os dados e a autenticação desta versão são demonstrativos. A persistência das contas, aprovações e conteúdos será conectada ao Firebase nas próximas etapas.
 

@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Perfil';
+type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
 type AuthStep = 'welcome' | 'login' | 'register' | 'role' | 'invite';
 
@@ -33,7 +33,7 @@ const tabs: { label: Tab; icon: string }[] = [
   { label: 'Estudo', icon: '▤' },
   { label: 'Presença', icon: '⚑' },
   { label: 'Quiz', icon: '?' },
-  { label: 'Perfil', icon: '●' },
+  { label: 'Mais', icon: '✦' },
 ];
 
 function Pill({ children, tone = 'gold' }: { children: React.ReactNode; tone?: 'gold' | 'coral' | 'teal' }) {
@@ -197,6 +197,30 @@ function QuizScreen() {
 }
 
 function ProfileScreen() {
+  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios'>('hub');
+  if (communityView !== 'hub') {
+    const content = {
+      ranking: { title: 'Rankings', eyebrow: 'PONTUAÇÃO DO TRIMESTRE', copy: 'Classificação normalizada para valorizar participação, não o tamanho da classe.' },
+      mural: { title: 'Mural', eyebrow: 'NOSSA COMUNIDADE', copy: 'Conquistas e desafios aprovados da sua turma.' },
+      flashcards: { title: 'Flashcards', eyebrow: 'IDEIAS PARA GUARDAR', copy: 'Seus lembretes da lição, Bíblia e livro.' },
+      desafios: { title: 'Desafios', eyebrow: 'MISSÃO DO MÊS', copy: 'Participe com toda a sua classe e some pontos.' },
+    }[communityView];
+    return (
+      <View style={styles.pagePad}>
+        <BackButton onPress={() => setCommunityView('hub')} />
+        <Text style={styles.pageEyebrow}>{content.eyebrow}</Text><Text style={styles.pageTitle}>{content.title}</Text><Text style={styles.pageIntro}>{content.copy}</Text>
+        {communityView === 'ranking' && <>
+          <View style={styles.rankingTabs}><Text style={styles.rankingTabActive}>Classe</Text><Text style={styles.rankingTab}>Distrito</Text><Text style={styles.rankingTab}>Turmas</Text></View>
+          {[['1', 'Marina Costa', '510'], ['2', 'João Pedro', '465'], ['3', 'Daniel Oliveira', '420'], ['4', 'Sara Lima', '398'], ['5', 'Lucas Rocha', '372']].map(([place, name, points]) => <View key={place} style={[styles.rankRow, place === '3' && styles.rankRowCurrent]}><Text style={styles.rankPlace}>{place}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><Text style={styles.rankName}>{name}</Text><Text style={styles.rankPoints}>{points} pts</Text></View>)}
+        </>}
+        {communityView === 'mural' && <>
+          {[['🏆', 'Marina conquistou “Leitora do mês”', 'Há 2 horas · 12 reações'], ['🔥', 'João completou 6 semanas seguidas', 'Ontem · 8 reações'], ['◆', 'Desafio solidário aprovado!', 'A Base Geração ganhou +100 pontos']].map(([icon, title, copy]) => <View key={title} style={styles.feedCard}><Text style={styles.feedEmoji}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text><Text style={styles.reactions}>♥  🙌  ⚡</Text></View></View>)}
+        </>}
+        {communityView === 'flashcards' && <View style={styles.flashGrid}>{[['A fé cresce quando é exercitada.', '#FFF1A8'], ['Josué 1:9 — coragem não é ausência de medo.', '#CFEDE5'], ['Servir também é uma forma de adorar.', '#FFD9CE'], ['Pergunta para o sábado: como aplicar isso?', '#DCE0FA']].map(([text, bg], index) => <View key={text} style={[styles.flashCard, { backgroundColor: bg, transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>NOTA {index + 1}</Text><Text style={styles.flashText}>{text}</Text></View>)}</View>}
+        {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
+      </View>
+    );
+  }
   return (
     <View style={styles.pagePad}>
       <View style={styles.profileTop}>
@@ -209,6 +233,12 @@ function ProfileScreen() {
         <View style={styles.stat}><Text style={styles.statValue}>420</Text><Text style={styles.cardCaption}>pontos</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>#3</Text><Text style={styles.cardCaption}>na classe</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>4</Text><Text style={styles.cardCaption}>semanas</Text></View>
+      </View>
+      <Text style={styles.sectionTitle}>Comunidade</Text>
+      <View style={styles.communityGrid}>
+        {[
+          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'],
+        ].map(([key, icon, label, bg]) => <Pressable key={key} style={[styles.communityCard, { backgroundColor: bg }]} onPress={() => setCommunityView(key as typeof communityView)}><Text style={styles.communityIcon}>{icon}</Text><Text style={styles.communityLabel}>{label}</Text><Text style={styles.communityLink}>Abrir ›</Text></Pressable>)}
       </View>
       <Text style={styles.sectionTitle}>Conquistas</Text>
       <View style={styles.badgeRow}>
@@ -243,7 +273,7 @@ function MainApp({ onExit }: { onExit: () => void }) {
           {tab === 'Estudo' && <StudyScreen />}
           {tab === 'Presença' && <AttendanceScreen />}
           {tab === 'Quiz' && <QuizScreen />}
-          {tab === 'Perfil' && <ProfileScreen />}
+          {tab === 'Mais' && <ProfileScreen />}
         </ScrollView>
         <View style={styles.nav}>
           {tabs.map((item) => {
@@ -282,7 +312,7 @@ function BackButton({ onPress }: { onPress: () => void }) {
   return <Pressable onPress={onPress} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text></Pressable>;
 }
 
-function AuthFlow({ onComplete }: { onComplete: () => void }) {
+function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [step, setStep] = useState<AuthStep>('welcome');
   const [role, setRole] = useState<Role>('adolescente');
   const [name, setName] = useState('');
@@ -337,7 +367,7 @@ function AuthFlow({ onComplete }: { onComplete: () => void }) {
               <View style={[styles.radio, role === item.key && styles.radioActive]}>{role === item.key && <View style={styles.radioDot} />}</View>
             </Pressable>
           ))}
-          <Pressable style={styles.authPrimary} onPress={() => role === 'adolescente' ? setStep('invite') : onComplete()}><Text style={styles.authPrimaryText}>Continuar</Text></Pressable>
+          <Pressable style={styles.authPrimary} onPress={() => role === 'adolescente' ? setStep('invite') : onComplete(role)}><Text style={styles.authPrimaryText}>Continuar</Text></Pressable>
           {role !== 'adolescente' && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
         </ScrollView>
       </SafeAreaView>
@@ -364,9 +394,9 @@ function AuthFlow({ onComplete }: { onComplete: () => void }) {
             {inviteState === 'idle' ? (
               <Pressable style={[styles.authPrimary, invite.length < 5 && styles.buttonDisabled]} disabled={invite.length < 5} onPress={validateInvite}><Text style={styles.authPrimaryText}>Verificar código</Text></Pressable>
             ) : (
-              <Pressable style={styles.authPrimary} onPress={onComplete}><Text style={styles.authPrimaryText}>Entrar na Base Geração</Text></Pressable>
+              <Pressable style={styles.authPrimary} onPress={() => onComplete('adolescente')}><Text style={styles.authPrimaryText}>Entrar na Base Geração</Text></Pressable>
             )}
-            <Pressable onPress={onComplete}><Text style={styles.skipLink}>Ainda não tenho um código</Text></Pressable>
+            <Pressable onPress={() => onComplete('adolescente')}><Text style={styles.skipLink}>Ainda não tenho um código</Text></Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -390,7 +420,7 @@ function AuthFlow({ onComplete }: { onComplete: () => void }) {
           <Pressable
             style={[styles.authPrimary, (email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)) && styles.buttonDisabled]}
             disabled={email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)}
-            onPress={() => isLogin ? onComplete() : setStep('role')}
+            onPress={() => isLogin ? onComplete('adolescente') : setStep('role')}
           >
             <Text style={styles.authPrimaryText}>{isLogin ? 'Entrar' : 'Continuar'}</Text>
           </Pressable>
@@ -402,9 +432,94 @@ function AuthFlow({ onComplete }: { onComplete: () => void }) {
   );
 }
 
+function MetricCard({ value, label, accent }: { value: string; label: string; accent: string }) {
+  return <View style={[styles.metricCard, { borderTopColor: accent }]}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
+}
+
+function ActionRow({ icon, title, copy, badge }: { icon: string; title: string; copy: string; badge?: string }) {
+  return (
+    <Pressable style={styles.manageRow}>
+      <View style={styles.manageIcon}><Text style={styles.manageIconText}>{icon}</Text></View>
+      <View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>
+      {badge && <Text style={styles.manageBadge}>{badge}</Text>}
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
+  );
+}
+
+function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; onExit: () => void }) {
+  const [section, setSection] = useState<'painel' | 'gestao' | 'atividade' | 'perfil'>('painel');
+  const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
+  const scope = role === 'diretor' ? 'Base Geração · Adolescentes' : role === 'coordenador' ? 'Distrito Salvador Centro' : 'Visão geral do projeto';
+  const metrics = role === 'diretor'
+    ? [['24', 'membros ativos', colors.tealMedium], ['82%', 'engajamento', colors.gold], ['3', 'pendências', colors.coral]]
+    : role === 'coordenador'
+      ? [['12', 'classes', colors.tealMedium], ['286', 'adolescentes', colors.gold], ['5', 'aprovações', colors.coral]]
+      : [['8', 'distritos', colors.tealMedium], ['47', 'classes', colors.gold], ['1.124', 'membros', colors.coral]];
+  const actions = role === 'diretor'
+    ? [
+      ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
+      ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
+      ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
+      ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', '3'],
+      ['✦', 'Flashcards publicados', 'Moderar cards enviados pela turma', '4'],
+      ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
+    ]
+    : role === 'coordenador'
+      ? [
+        ['✓', 'Aprovar diretores', 'Novos responsáveis aguardando análise', '3'],
+        ['◆', 'Validar desafios', 'Evidências enviadas pelas classes', '2'],
+        ['⌘', 'Classes do distrito', 'Desempenho por igreja e faixa', '12'],
+        ['◉', 'Encontros distritais', 'Criar e gerenciar próximos eventos', ''],
+        ['⇩', 'Relatório trimestral', 'Exportar dados consolidados', ''],
+      ]
+      : [
+        ['⌘', 'Distritos', 'Coordenadores e estrutura regional', '8'],
+        ['⌂', 'Igrejas e classes', 'Todas as turmas cadastradas', '47'],
+        ['✓', 'Aprovações pendentes', 'Intervenções que precisam de atenção', '5'],
+        ['♙', 'Gerenciar coordenadores', 'Convites, transferências e acessos', ''],
+        ['⇩', 'Relatório geral', 'Indicadores consolidados do projeto', ''],
+      ];
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar style="light" />
+      <View style={styles.shell}>
+        <View style={styles.managementHero}>
+          <View style={styles.managementTop}><View><Text style={styles.eyebrowLight}>{roleName.toUpperCase()}</Text><Text style={styles.managementGreeting}>Olá, Albert</Text></View><Pressable style={styles.avatar} onLongPress={onExit}><Text style={styles.avatarText}>A</Text></Pressable></View>
+          <Text style={styles.managementScope}>{scope}</Text>
+          {role === 'diretor' && <Pressable style={styles.classSelector}><Text style={styles.classSelectorText}>Turma ativa: Adolescentes⌄</Text></Pressable>}
+        </View>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.managementContent} showsVerticalScrollIndicator={false}>
+          {section === 'painel' && <>
+            <Text style={styles.sectionTitle}>Visão de hoje</Text>
+            <View style={styles.metricsGrid}>{metrics.map(([value, label, accent]) => <MetricCard key={label} value={value} label={label} accent={accent} />)}</View>
+            <View style={styles.alertCard}><View style={styles.alertDot} /><View style={styles.flex}><Text style={styles.alertTitle}>Atenção necessária</Text><Text style={styles.alertCopy}>{role === 'diretor' ? '2 adolescentes estão há duas semanas sem presença.' : role === 'coordenador' ? '3 solicitações de diretor aguardam sua aprovação.' : 'O Distrito Norte ainda não possui coordenador.'}</Text></View></View>
+            <View style={styles.sectionHeaderManagement}><Text style={styles.sectionTitle}>Desempenho</Text><Text style={styles.seeAll}>Ver relatório ›</Text></View>
+            <View style={styles.performanceCard}><View style={styles.performanceTop}><Text style={styles.weekTitle}>Engajamento no trimestre</Text><Text style={styles.performanceUp}>↑ 12%</Text></View><View style={styles.barChart}>{[42, 58, 51, 72, 66, 81, 86].map((height, index) => <View key={index} style={[styles.chartBar, { height }, index === 6 && styles.chartBarActive]} />)}</View><View style={styles.chartLabels}>{['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'].map(label => <Text key={label} style={styles.chartLabel}>{label}</Text>)}</View></View>
+          </>}
+          {section === 'gestao' && <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} />)}</>}
+          {section === 'atividade' && <><Text style={styles.pageEyebrow}>ÚLTIMAS ATUALIZAÇÕES</Text><Text style={styles.pageTitle}>Atividade</Text><Text style={styles.pageIntro}>Acompanhe o que aconteceu recentemente.</Text>{[
+            ['✓', 'Presença aprovada', 'Daniel avançou para a semana 7 · há 12 min'],
+            ['★', 'Nova conquista', 'Marina completou 4 semanas de estudo · há 1h'],
+            ['◆', 'Desafio enviado', 'Evidência do desafio de julho · ontem'],
+            ['▤', 'Resumo recebido', '7 novos resumos aguardam avaliação · ontem'],
+          ].map(([icon, title, copy]) => <ActionRow key={title} icon={icon} title={title} copy={copy} />)}</>}
+          {section === 'perfil' && <><View style={styles.profileTop}><View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>A</Text></View><Text style={styles.profileName}>Albert Santos</Text><Text style={styles.profileClass}>{roleName}</Text><Text style={styles.profileStatus}>{scope}</Text></View><ActionRow icon="⚙" title="Configurações" copy="Conta, notificações e privacidade" /><ActionRow icon="?" title="Ajuda" copy="Orientações sobre o aplicativo" /><Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair do protótipo</Text></Pressable></>}
+        </ScrollView>
+        <View style={styles.nav}>{[
+          ['painel', '⌂', 'Painel'], ['gestao', '▤', 'Gestão'], ['atividade', '◉', 'Atividade'], ['perfil', '●', 'Perfil'],
+        ].map(([key, icon, label]) => <Pressable key={key} style={styles.navItem} onPress={() => setSection(key as typeof section)}><View style={[styles.navIconWrap, section === key && styles.navIconActive]}><Text style={[styles.navIcon, section === key && styles.navIconTextActive]}>{icon}</Text></View><Text style={[styles.navLabel, section === key && styles.navLabelActive]}>{label}</Text></Pressable>)}</View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-  return authenticated ? <MainApp onExit={() => setAuthenticated(false)} /> : <AuthFlow onComplete={() => setAuthenticated(true)} />;
+  const [activeRole, setActiveRole] = useState<Role | null>(null);
+  if (!activeRole) return <AuthFlow onComplete={setActiveRole} />;
+  if (activeRole === 'adolescente') return <MainApp onExit={() => setActiveRole(null)} />;
+  return <ManagementApp role={activeRole} onExit={() => setActiveRole(null)} />;
 }
 
 const styles = StyleSheet.create({
@@ -427,6 +542,15 @@ const styles = StyleSheet.create({
   authSwitch: { textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 22 }, authSwitchStrong: { color: colors.coral, fontWeight: '900' }, demoBox: { padding: 12, borderRadius: 13, backgroundColor: '#E0E9E4', marginTop: 24 }, demoText: { color: colors.muted, fontSize: 10, textAlign: 'center' },
   roleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', padding: 14, marginBottom: 10 }, roleCardActive: { borderColor: colors.coral, backgroundColor: '#FFF8F5' }, roleIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E4ECE8', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, roleIconActive: { backgroundColor: colors.coral }, roleIconText: { color: colors.teal, fontSize: 18, fontWeight: '900' }, roleIconTextActive: { color: colors.white }, roleTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' }, roleCopy: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 3, maxWidth: 250 }, radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B4C1BC', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }, radioActive: { borderColor: colors.coral }, radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.coral }, approvalHint: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12 },
   inviteIllustration: { width: 80, height: 80, borderRadius: 25, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginBottom: 23 }, inviteIllustrationText: { color: colors.tealMedium, fontSize: 44, fontWeight: '900' }, classFound: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCEDE9', borderRadius: 16, padding: 14, marginTop: -4, marginBottom: 10 }, classFoundIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 11 }, classFoundTitle: { color: colors.teal, fontSize: 14, fontWeight: '900' }, classFoundCopy: { color: colors.muted, fontSize: 10, marginTop: 2 }, skipLink: { color: colors.tealMedium, fontSize: 12, fontWeight: '800', textAlign: 'center', marginTop: 21 },
+  managementHero: { backgroundColor: colors.teal, padding: 22, paddingBottom: 28, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, managementTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, managementGreeting: { color: colors.white, fontSize: 26, fontWeight: '900', marginTop: 3 }, managementScope: { color: '#BFD2CD', fontSize: 13, marginTop: 18 }, classSelector: { alignSelf: 'flex-start', backgroundColor: colors.tealMedium, borderWidth: 1, borderColor: '#43736E', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 13 }, classSelectorText: { color: colors.white, fontSize: 11, fontWeight: '800' }, managementContent: { padding: 20, paddingBottom: 30 },
+  metricsGrid: { flexDirection: 'row', gap: 9, marginTop: 13, marginBottom: 18 }, metricCard: { flex: 1, minHeight: 95, backgroundColor: colors.white, borderRadius: 16, borderTopWidth: 4, padding: 12, justifyContent: 'center' }, metricValue: { color: colors.teal, fontSize: 23, fontWeight: '900' }, metricLabel: { color: colors.muted, fontSize: 9, lineHeight: 13, marginTop: 4 },
+  alertCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FBE4DA', borderRadius: 17, padding: 14 }, alertDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.coral, marginRight: 12 }, alertTitle: { color: '#9A3D23', fontSize: 12, fontWeight: '900' }, alertCopy: { color: '#805343', fontSize: 10, lineHeight: 15, marginTop: 3 }, sectionHeaderManagement: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 12 }, seeAll: { color: colors.coral, fontSize: 11, fontWeight: '900' },
+  performanceCard: { backgroundColor: colors.white, borderRadius: 19, padding: 16 }, performanceTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, performanceUp: { color: colors.tealMedium, fontSize: 12, fontWeight: '900' }, barChart: { height: 105, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', marginTop: 17, borderBottomWidth: 1, borderBottomColor: colors.line }, chartBar: { width: 20, backgroundColor: '#BFD2CD', borderTopLeftRadius: 5, borderTopRightRadius: 5 }, chartBarActive: { backgroundColor: colors.gold }, chartLabels: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 7 }, chartLabel: { color: colors.muted, fontSize: 8 },
+  manageRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 13, marginBottom: 10 }, manageIcon: { width: 43, height: 43, borderRadius: 13, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, manageIconText: { color: colors.teal, fontSize: 17, fontWeight: '900' }, manageTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' }, manageCopy: { color: colors.muted, fontSize: 9, lineHeight: 14, marginTop: 3 }, manageBadge: { backgroundColor: '#FBE0D6', color: colors.coral, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 9, overflow: 'hidden', fontSize: 8, fontWeight: '900' }, signOutButton: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: '#D6A28E', alignItems: 'center', justifyContent: 'center', marginTop: 15 }, signOutText: { color: colors.coral, fontSize: 13, fontWeight: '900' },
+  communityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12, marginBottom: 24 }, communityCard: { width: '48%', minHeight: 116, borderRadius: 18, padding: 14 }, communityIcon: { color: colors.teal, fontSize: 20, fontWeight: '900' }, communityLabel: { color: colors.ink, fontSize: 14, fontWeight: '900', marginTop: 12 }, communityLink: { color: colors.tealMedium, fontSize: 10, fontWeight: '800', marginTop: 6 },
+  rankingTabs: { flexDirection: 'row', backgroundColor: '#E1E9E4', borderRadius: 14, padding: 4, marginBottom: 13 }, rankingTab: { flex: 1, textAlign: 'center', color: colors.muted, fontSize: 10, fontWeight: '800', paddingVertical: 9 }, rankingTabActive: { flex: 1, textAlign: 'center', color: colors.white, backgroundColor: colors.tealMedium, borderRadius: 10, overflow: 'hidden', fontSize: 10, fontWeight: '900', paddingVertical: 9 }, rankRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 16, padding: 12, marginBottom: 8 }, rankRowCurrent: { borderWidth: 2, borderColor: colors.gold, backgroundColor: '#FFF9EC' }, rankPlace: { width: 28, color: colors.teal, fontSize: 16, fontWeight: '900' }, rankAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginRight: 10 }, rankAvatarText: { color: colors.teal, fontWeight: '900' }, rankName: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: '800' }, rankPoints: { color: '#9A6815', fontSize: 11, fontWeight: '900' },
+  feedCard: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 18, padding: 15, marginBottom: 11 }, feedEmoji: { width: 42, fontSize: 25 }, reactions: { color: colors.coral, fontSize: 12, marginTop: 12, letterSpacing: 5 }, flashGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, flashCard: { width: '47%', minHeight: 150, borderRadius: 4, padding: 15, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }, flashLabel: { color: colors.muted, fontSize: 8, fontWeight: '900', letterSpacing: 1 }, flashText: { color: colors.ink, fontSize: 13, lineHeight: 20, fontWeight: '700', marginTop: 12 },
+  challengeCard: { backgroundColor: colors.white, borderRadius: 22, padding: 18 }, challengeTitle: { color: colors.ink, fontSize: 23, fontWeight: '900', marginTop: 17 }, challengeCopy: { color: colors.muted, fontSize: 13, lineHeight: 20, marginTop: 8 }, challengeMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 8 }, challengePoints: { color: colors.coral, fontSize: 13, fontWeight: '900' }, challengeStatus: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 12, overflow: 'hidden', padding: 11, fontSize: 9, fontWeight: '800', marginTop: 13 },
   shell: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: colors.sage },
   scroll: { flex: 1 }, content: { paddingBottom: 28 }, flex: { flex: 1 },
   hero: { backgroundColor: colors.teal, paddingHorizontal: 22, paddingTop: 25, paddingBottom: 42, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
