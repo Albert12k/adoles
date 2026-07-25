@@ -11,6 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { firebaseEnabled } from './src/config/firebase';
+import { getUserRole, loginUser, registerUser } from './src/services/auth';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -334,6 +336,31 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [password, setPassword] = useState('');
   const [invite, setInvite] = useState('');
   const [inviteState, setInviteState] = useState<'idle' | 'valid'>('idle');
+  const [authError, setAuthError] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
+  const finishRegistration = async (selectedRole: Role) => {
+    if (!firebaseEnabled) return onComplete(selectedRole);
+    setAuthBusy(true); setAuthError('');
+    try {
+      await registerUser(name, email, password, mapRole(selectedRole));
+      onComplete(selectedRole === 'adolescente' ? 'adolescente' : selectedRole);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Não foi possível criar a conta.');
+    } finally { setAuthBusy(false); }
+  };
+  const finishLogin = async () => {
+    if (!firebaseEnabled) return onComplete('adolescente');
+    setAuthBusy(true); setAuthError('');
+    try {
+      const user = await loginUser(email, password);
+      const savedRole = await getUserRole(user.uid);
+      onComplete(savedRole === 'director' ? 'diretor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'E-mail ou senha inválidos.');
+    } finally { setAuthBusy(false); }
+  };
 
   const validateInvite = () => {
     if (invite.trim().length >= 5) setInviteState('valid');
@@ -381,7 +408,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
               <View style={[styles.radio, role === item.key && styles.radioActive]}>{role === item.key && <View style={styles.radioDot} />}</View>
             </Pressable>
           ))}
-          <Pressable style={styles.authPrimary} onPress={() => role === 'adolescente' ? setStep('invite') : onComplete(role)}><Text style={styles.authPrimaryText}>Continuar</Text></Pressable>
+          <Pressable style={styles.authPrimary} disabled={authBusy} onPress={() => role === 'adolescente' ? setStep('invite') : finishRegistration(role)}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Continuar'}</Text></Pressable>
           {role !== 'adolescente' && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
         </ScrollView>
       </SafeAreaView>
@@ -408,9 +435,10 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
             {inviteState === 'idle' ? (
               <Pressable style={[styles.authPrimary, invite.length < 5 && styles.buttonDisabled]} disabled={invite.length < 5} onPress={validateInvite}><Text style={styles.authPrimaryText}>Verificar código</Text></Pressable>
             ) : (
-              <Pressable style={styles.authPrimary} onPress={() => onComplete('adolescente')}><Text style={styles.authPrimaryText}>Entrar na Base Geração</Text></Pressable>
+              <Pressable style={styles.authPrimary} disabled={authBusy} onPress={() => finishRegistration('adolescente')}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Entrar na Base Geração'}</Text></Pressable>
             )}
-            <Pressable onPress={() => onComplete('adolescente')}><Text style={styles.skipLink}>Ainda não tenho um código</Text></Pressable>
+            <Pressable disabled={authBusy} onPress={() => finishRegistration('adolescente')}><Text style={styles.skipLink}>Ainda não tenho um código</Text></Pressable>
+            {authError !== '' && <Text style={styles.authError}>{authError}</Text>}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -434,12 +462,13 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           <Pressable
             style={[styles.authPrimary, (email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)) && styles.buttonDisabled]}
             disabled={email.length < 4 || password.length < 6 || (!isLogin && name.length < 2)}
-            onPress={() => isLogin ? onComplete('adolescente') : setStep('role')}
+            onPress={() => isLogin ? finishLogin() : setStep('role')}
           >
-            <Text style={styles.authPrimaryText}>{isLogin ? 'Entrar' : 'Continuar'}</Text>
+            <Text style={styles.authPrimaryText}>{authBusy ? 'Aguarde...' : isLogin ? 'Entrar' : 'Continuar'}</Text>
           </Pressable>
           <Pressable onPress={() => setStep(isLogin ? 'register' : 'login')}><Text style={styles.authSwitch}>{isLogin ? 'Ainda não tem conta? ' : 'Já tem uma conta? '}<Text style={styles.authSwitchStrong}>{isLogin ? 'Cadastre-se' : 'Entrar'}</Text></Text></Pressable>
           <View style={styles.demoBox}><Text style={styles.demoText}>Protótipo: use qualquer e-mail e uma senha com 6 caracteres.</Text></View>
+          {authError !== '' && <Text style={styles.authError}>{authError}</Text>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -621,6 +650,7 @@ const styles = StyleSheet.create({
   authField: { marginBottom: 16 }, authLabel: { color: colors.ink, fontSize: 12, fontWeight: '800', marginBottom: 7 }, authInput: { height: 54, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 16, color: colors.ink, fontSize: 14 },
   authPrimary: { minHeight: 55, backgroundColor: colors.coral, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginTop: 9 }, authPrimaryText: { color: colors.white, fontSize: 14, fontWeight: '900' }, forgotLink: { color: colors.coral, fontSize: 12, fontWeight: '800', textAlign: 'right', marginTop: -6, marginBottom: 8 },
   authSwitch: { textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 22 }, authSwitchStrong: { color: colors.coral, fontWeight: '900' }, demoBox: { padding: 12, borderRadius: 13, backgroundColor: '#E0E9E4', marginTop: 24 }, demoText: { color: colors.muted, fontSize: 10, textAlign: 'center' },
+  authError: { color: '#A33A1D', backgroundColor: '#FBE0D6', borderRadius: 12, overflow: 'hidden', padding: 10, textAlign: 'center', fontSize: 10, marginTop: 12 },
   roleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', padding: 14, marginBottom: 10 }, roleCardActive: { borderColor: colors.coral, backgroundColor: '#FFF8F5' }, roleIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E4ECE8', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, roleIconActive: { backgroundColor: colors.coral }, roleIconText: { color: colors.teal, fontSize: 18, fontWeight: '900' }, roleIconTextActive: { color: colors.white }, roleTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' }, roleCopy: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 3, maxWidth: 250 }, radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B4C1BC', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }, radioActive: { borderColor: colors.coral }, radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.coral }, approvalHint: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12 },
   inviteIllustration: { width: 80, height: 80, borderRadius: 25, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginBottom: 23 }, inviteIllustrationText: { color: colors.tealMedium, fontSize: 44, fontWeight: '900' }, classFound: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCEDE9', borderRadius: 16, padding: 14, marginTop: -4, marginBottom: 10 }, classFoundIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 11 }, classFoundTitle: { color: colors.teal, fontSize: 14, fontWeight: '900' }, classFoundCopy: { color: colors.muted, fontSize: 10, marginTop: 2 }, skipLink: { color: colors.tealMedium, fontSize: 12, fontWeight: '800', textAlign: 'center', marginTop: 21 },
   managementHero: { backgroundColor: colors.teal, padding: 22, paddingBottom: 28, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, managementTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, managementGreeting: { color: colors.white, fontSize: 26, fontWeight: '900', marginTop: 3 }, managementScope: { color: '#BFD2CD', fontSize: 13, marginTop: 18 }, classSelector: { alignSelf: 'flex-start', backgroundColor: colors.tealMedium, borderWidth: 1, borderColor: '#43736E', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 13 }, classSelectorText: { color: colors.white, fontSize: 11, fontWeight: '800' }, managementContent: { padding: 20, paddingBottom: 30 },

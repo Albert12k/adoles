@@ -1,5 +1,5 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import type { UserRole } from '../domain/models';
 
@@ -9,17 +9,25 @@ const requireFirebase = () => {
 };
 
 export async function registerUser(name: string, email: string, password: string, role: UserRole) {
-  if (role !== 'student') throw new Error('Contas de liderança precisam ser aprovadas por um responsável.');
+  if (role === 'admin') throw new Error('Administradores são cadastrados diretamente no painel seguro do projeto.');
   const services = requireFirebase();
   const credential = await createUserWithEmailAndPassword(services.auth, email, password);
   await setDoc(doc(services.db, 'users', credential.user.uid), {
     name,
     email: email.toLowerCase(),
-    role,
+    role: 'student',
     classIds: [],
     active: true,
     createdAt: serverTimestamp(),
   });
+  if (role !== 'student') {
+    await setDoc(doc(services.db, 'roleRequests', credential.user.uid), {
+      userId: credential.user.uid,
+      requestedRole: role,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+  }
   return credential.user;
 }
 
@@ -31,4 +39,10 @@ export async function loginUser(email: string, password: string) {
 export async function logoutUser() {
   const services = requireFirebase();
   await signOut(services.auth);
+}
+
+export async function getUserRole(userId: string): Promise<UserRole> {
+  const services = requireFirebase();
+  const snapshot = await getDoc(doc(services.db, 'users', userId));
+  return (snapshot.data()?.role as UserRole | undefined) ?? 'student';
 }
