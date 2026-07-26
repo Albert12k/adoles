@@ -30,8 +30,9 @@ export async function requestClassEntry(userId: string, inviteCode: string) {
   const invite = await getDoc(doc(firestore, 'classInviteCodes', code));
   if (!invite.exists() || !invite.data().active) throw new Error('Código de convite inválido ou expirado.');
   const classId = invite.data().classId as string;
+  const profile = await getDoc(doc(firestore, 'users', userId));
   await setDoc(doc(firestore, 'classJoinRequests', `${classId}_${userId}`), {
-    userId, classId, districtId: invite.data().districtId, status: 'pending', createdAt: serverTimestamp(),
+    userId, classId, districtId: invite.data().districtId, name: profile.data()?.name ?? 'Adolescente', status: 'pending', createdAt: serverTimestamp(),
   });
   return { classId, className: '' };
 }

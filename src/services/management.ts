@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -69,6 +69,17 @@ export async function manageClassMembership(input: { action: 'regenerateCode' | 
       transaction.update(inviteRef, { inviteCode: code, updatedAt: serverTimestamp(), updatedBy: auth!.currentUser!.uid });
     });
     return { success: true, inviteCode: code };
+  }
+  if (input.action === 'removeMember') {
+    if (!db || !auth?.currentUser || !input.targetUserId) throw new Error('Selecione um membro para remover.');
+    await runTransaction(db, async transaction => {
+      const memberRef = doc(db!, 'classMembers', `${input.classId}_${input.targetUserId}`);
+      const member = await transaction.get(memberRef);
+      if (!member.exists()) throw new Error('Membro não encontrado nesta classe.');
+      transaction.update(doc(db!, 'users', input.targetUserId!), { classIds: arrayRemove(input.classId) });
+      transaction.update(memberRef, { active: false, removedAt: serverTimestamp(), removedBy: auth!.currentUser!.uid });
+    });
+    return { success: true };
   }
   const callable = httpsCallable<typeof input, { success?: boolean; inviteCode?: string; className?: string }>(requireFunctions(), 'manageClassMembership');
   return (await callable(input)).data;

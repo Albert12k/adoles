@@ -51,8 +51,15 @@ export function useClassManagement() {
     const user = auth?.currentUser;
     if (!firebaseEnabled || !db || !user) return;
     let active = true;
-    getManagedClass().then(result => { if (active) setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members }); }).catch(() => undefined);
-    return () => { active = false; };
+    let unsubscribe: () => void = () => {};
+    getManagedClass().then(result => {
+      if (!active) return;
+      setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members });
+      if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', '==', result.classId), where('active', '==', true), limit(100)), snapshot => {
+        setState(current => ({ ...current, members: snapshot.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) }));
+      });
+    }).catch(() => undefined);
+    return () => { active = false; unsubscribe(); };
   }, []);
   return state;
 }
