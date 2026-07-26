@@ -282,6 +282,19 @@ async function requireLeader(uid: string) {
   return profile;
 }
 
+export const getRegistrationOptions = onCall({ region }, async () => {
+  const [districts, churches, classes] = await Promise.all([
+    db.collection('districts').where('active', '==', true).get(),
+    db.collection('churches').where('active', '==', true).get(),
+    db.collection('classes').where('active', '==', true).get(),
+  ]);
+  return {
+    districts: districts.docs.map(item => ({ id: item.id, name: item.data().name })),
+    churches: churches.docs.map(item => ({ id: item.id, districtId: item.data().districtId, name: item.data().name })),
+    classes: classes.docs.map(item => ({ id: item.id, districtId: item.data().districtId, churchId: item.data().churchId, name: item.data().name, ageGroup: item.data().ageGroup })),
+  };
+});
+
 async function requireClassAccess(profile: DocumentData, classId: string) {
   const classSnapshot = await db.collection('classes').doc(classId).get();
   if (!classSnapshot.exists) throw new HttpsError('not-found', 'Classe não encontrada.');
@@ -358,4 +371,18 @@ export const reviewLeadershipItem = onCall({ region }, async request => {
     await batch.commit();
   }
   return { status: approved ? 'approved' : 'rejected' };
+});
+
+export const sendPushNotification = onDocumentCreated({ document: 'notifications/{notificationId}', region }, async event => {
+  const notification = event.data?.data();
+  if (!notification?.userId) return;
+  const tokenSnapshot = await db.collection('pushTokens').doc(notification.userId).get();
+  const token = tokenSnapshot.data()?.expoPushToken;
+  if (!token || !/^(ExponentPushToken|ExpoPushToken)\[.+\]$/.test(token)) return;
+  const response = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' },
+    body: JSON.stringify({ to: token, sound: 'default', title: notification.title, body: notification.body, data: { notificationId: event.params.notificationId, type: notification.type } }),
+  });
+  if (!response.ok) console.error('Falha ao enviar push', response.status, await response.text());
 });

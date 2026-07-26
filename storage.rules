@@ -8,16 +8,24 @@ service firebase.storage {
     function leader() {
       return signedIn() && profile().role in ['admin', 'coordinator', 'director'];
     }
+    function classData(classId) {
+      return firestore.get(/databases/(default)/documents/classes/$(classId)).data;
+    }
+    function managesClass(classId) {
+      return signedIn() && (profile().role == 'admin' ||
+        (profile().role == 'director' && classId in profile().classIds) ||
+        (profile().role == 'coordinator' && profile().districtId == classData(classId).districtId));
+    }
 
-    match /attendance/{userId}/{fileName} {
+    match /attendance/{classId}/{userId}/{fileName} {
       allow write: if signedIn() && request.auth.uid == userId &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
-      allow read: if signedIn() && (request.auth.uid == userId || leader());
+      allow read: if signedIn() && (request.auth.uid == userId || managesClass(classId));
     }
 
     match /weekly-content/{classId}/{fileName} {
-      allow write: if leader() && request.resource.size < 25 * 1024 * 1024 &&
+      allow write: if managesClass(classId) && request.resource.size < 25 * 1024 * 1024 &&
         request.resource.contentType == 'application/pdf';
       allow read: if signedIn() && classId in profile().classIds;
     }

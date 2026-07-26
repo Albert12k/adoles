@@ -1,6 +1,7 @@
 import { createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { auth, cloudFunctions, db } from '../config/firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { UserRole } from '../domain/models';
 
 const requireFirebase = () => {
@@ -8,7 +9,7 @@ const requireFirebase = () => {
   return { auth, db };
 };
 
-export async function registerUser(name: string, email: string, password: string, role: UserRole) {
+export async function registerUser(name: string, email: string, password: string, role: UserRole, scope: { districtId?: string; classId?: string } = {}) {
   if (role === 'admin') throw new Error('Administradores são cadastrados diretamente no painel seguro do projeto.');
   const services = requireFirebase();
   const credential = await createUserWithEmailAndPassword(services.auth, email, password);
@@ -24,11 +25,25 @@ export async function registerUser(name: string, email: string, password: string
     await setDoc(doc(services.db, 'roleRequests', credential.user.uid), {
       userId: credential.user.uid,
       requestedRole: role,
+      districtId: scope.districtId ?? null,
+      classId: scope.classId ?? null,
       status: 'pending',
       createdAt: serverTimestamp(),
     });
   }
   return credential.user;
+}
+
+export interface RegistrationOptions {
+  districts: Array<{ id: string; name: string }>;
+  churches: Array<{ id: string; districtId: string; name: string }>;
+  classes: Array<{ id: string; districtId: string; churchId: string; name: string; ageGroup: string }>;
+}
+
+export async function getRegistrationOptions() {
+  if (!cloudFunctions) return { districts: [], churches: [], classes: [] } as RegistrationOptions;
+  const callable = httpsCallable<Record<string, never>, RegistrationOptions>(cloudFunctions, 'getRegistrationOptions');
+  return (await callable({})).data;
 }
 
 export async function loginUser(email: string, password: string) {

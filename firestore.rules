@@ -130,5 +130,16 @@ service cloud.firestore {
     match /hallOfFame/{entryId} {
       allow read: if signedIn();
     }
+
+    match /pushTokens/{userId} {
+      allow create: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['userId', 'expoPushToken', 'platform', 'updatedAt']);
+      allow update: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId', 'expoPushToken', 'platform', 'updatedAt']);
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
   }
 }

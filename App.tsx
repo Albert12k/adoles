@@ -13,11 +13,14 @@ import {
   View,
 } from 'react-native';
 import { firebaseEnabled } from './src/config/firebase';
-import { getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
+import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
+import type { RegistrationOptions } from './src/services/auth';
 import { requestClassEntry } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { publishContent, publishQuizContent } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
+import { selectAndSubmitAttendancePhoto, selectAndUploadContentPdf } from './src/services/media';
+import { registerPushNotifications } from './src/services/notifications';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -164,6 +167,13 @@ function StudyScreen() {
 
 function AttendanceScreen() {
   const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const sendPhoto = async () => {
+    if (!firebaseEnabled) return setSent(true);
+    setSendError('');
+    try { const result = await selectAndSubmitAttendancePhoto(7, 3, new Date().getFullYear()); if (result) setSent(true); }
+    catch (error) { setSendError(error instanceof Error ? error.message : 'Não foi possível enviar a foto.'); }
+  };
   return (
     <View style={styles.pagePad}>
       <Text style={styles.pageEyebrow}>TRIMESTRE 3 · SEMANA 7</Text>
@@ -183,8 +193,9 @@ function AttendanceScreen() {
         <View style={styles.stat}><Text style={styles.statValue}>54%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>+70</Text><Text style={styles.cardCaption}>pontos</Text></View>
       </View>
-      <Pressable style={[styles.primaryButton, sent && styles.buttonDone]} onPress={() => setSent(true)}><Text style={styles.primaryButtonText}>{sent ? '✓ Presença enviada para aprovação' : '📷 Enviar foto da presença'}</Text></Pressable>
+      <Pressable style={[styles.primaryButton, sent && styles.buttonDone]} onPress={sendPhoto}><Text style={styles.primaryButtonText}>{sent ? '✓ Presença enviada para aprovação' : '📷 Enviar foto da presença'}</Text></Pressable>
       {sent && <Text style={styles.pendingHint}>Seu diretor receberá a foto e confirmará seu avanço na trilha.</Text>}
+      {sendError !== '' && <Text style={styles.authError}>{sendError}</Text>}
     </View>
   );
 }
@@ -345,13 +356,24 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
+  const [registrationOptions, setRegistrationOptions] = useState<RegistrationOptions>({ districts: [], churches: [], classes: [] });
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [selectedClass, setSelectedClass] = useState('');
+
+  useEffect(() => {
+    if (step !== 'role' || !firebaseEnabled) return;
+    getRegistrationOptions().then(options => {
+      setRegistrationOptions(options);
+      setSelectedDistrict(current => current || options.districts[0]?.id || '');
+    }).catch(() => setAuthError('Não foi possível carregar os distritos.'));
+  }, [step]);
 
   const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
   const finishRegistration = async (selectedRole: Role) => {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
     try {
-      const user = await registerUser(name, email, password, mapRole(selectedRole));
+      const user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined });
       if (selectedRole === 'adolescente' && invite.trim().length >= 5) {
         await requestClassEntry(user.uid, invite);
       }
@@ -366,6 +388,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     try {
       const user = await loginUser(email, password);
       const savedRole = await getUserRole(user.uid);
+      registerPushNotifications().catch(() => undefined);
       onComplete(savedRole === 'director' ? 'diretor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'E-mail ou senha inválidos.');
@@ -426,7 +449,12 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
               <View style={[styles.radio, role === item.key && styles.radioActive]}>{role === item.key && <View style={styles.radioDot} />}</View>
             </Pressable>
           ))}
-          <Pressable style={styles.authPrimary} disabled={authBusy} onPress={() => role === 'adolescente' ? setStep('invite') : finishRegistration(role)}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Continuar'}</Text></Pressable>
+          {(role === 'diretor' || role === 'coordenador') && <View style={styles.scopeSection}>
+            <Text style={styles.authLabel}>Distrito desejado</Text>
+            <View style={styles.scopeWrap}>{(registrationOptions.districts.length ? registrationOptions.districts : [{ id: 'salvador-centro', name: 'Salvador Centro' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { setSelectedDistrict(item.id); setSelectedClass(''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
+            {role === 'diretor' && <><Text style={[styles.authLabel, { marginTop: 13 }]}>Classe desejada</Text><View style={styles.scopeWrap}>{(registrationOptions.classes.filter(item => item.districtId === selectedDistrict).length ? registrationOptions.classes.filter(item => item.districtId === selectedDistrict) : [{ id: 'base-geracao', name: 'Base Geração', districtId: selectedDistrict, churchId: '', ageGroup: 'adolescentes' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedClass === item.id && styles.scopeChipActive]} onPress={() => setSelectedClass(item.id)}><Text style={[styles.scopeChipText, selectedClass === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View></>}
+          </View>}
+          <Pressable style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)) && styles.buttonDisabled]} disabled={authBusy || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)))} onPress={() => role === 'adolescente' ? setStep('invite') : finishRegistration(role)}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Continuar'}</Text></Pressable>
           {role !== 'adolescente' && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
         </ScrollView>
       </SafeAreaView>
@@ -516,6 +544,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
+  const [uploadedPdf, setUploadedPdf] = useState<{ name: string; url: string } | null>(null);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -528,10 +557,16 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const saveManagement = async () => {
     setActionError('');
     try {
-      if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
+      if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
       if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Quiz semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: [{ prompt: question, options: ['Josué', 'Daniel', 'Davi', 'Samuel'], correctIndex: 0 }] });
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
+  };
+  const uploadPdf = async () => {
+    if (!firebaseEnabled) return setUploadedPdf({ name: 'licao-demonstrativa.pdf', url: 'demo' });
+    setActionError('');
+    try { const file = await selectAndUploadContentPdf(); if (file) setUploadedPdf(file); }
+    catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível enviar o PDF.'); }
   };
   const exportReport = async () => {
     setActionError(''); setMemberNotice('Preparando relatório...');
@@ -546,7 +581,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
       <Text style={styles.pageIntro}>{isApproval ? 'Analise os itens pendentes e registre sua decisão.' : 'Prepare as informações que ficarão disponíveis para a turma.'}</Text>
       {isContent && <>
         <AuthField label="Título da lição" placeholder="Título da semana" value={lessonTitle} onChangeText={setLessonTitle} />
-        <View style={styles.uploadBox}><Text style={styles.uploadIcon}>＋</Text><Text style={styles.uploadTitle}>Adicionar arquivo</Text><Text style={styles.uploadCopy}>PDF da lição ou do livro · até 25 MB</Text></View>
+        <Pressable style={styles.uploadBox} onPress={uploadPdf}><Text style={styles.uploadIcon}>{uploadedPdf ? '✓' : '＋'}</Text><Text style={styles.uploadTitle}>{uploadedPdf?.name ?? 'Adicionar arquivo'}</Text><Text style={styles.uploadCopy}>{uploadedPdf ? 'PDF pronto para publicação' : 'PDF da lição ou do livro · até 25 MB'}</Text></Pressable>
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Publicar agora</Text><Text style={styles.manageCopy}>A turma receberá uma notificação</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isQuiz && <>
@@ -699,6 +734,7 @@ const styles = StyleSheet.create({
   authError: { color: '#A33A1D', backgroundColor: '#FBE0D6', borderRadius: 12, overflow: 'hidden', padding: 10, textAlign: 'center', fontSize: 10, marginTop: 12 },
   authSuccess: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 12, overflow: 'hidden', padding: 10, textAlign: 'center', fontSize: 10, marginTop: 12 }, loadingScreen: { flex: 1, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' }, loadingText: { color: colors.white, fontSize: 12, fontWeight: '800', marginTop: 14 },
   roleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', padding: 14, marginBottom: 10 }, roleCardActive: { borderColor: colors.coral, backgroundColor: '#FFF8F5' }, roleIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#E4ECE8', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, roleIconActive: { backgroundColor: colors.coral }, roleIconText: { color: colors.teal, fontSize: 18, fontWeight: '900' }, roleIconTextActive: { color: colors.white }, roleTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' }, roleCopy: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 3, maxWidth: 250 }, radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B4C1BC', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }, radioActive: { borderColor: colors.coral }, radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.coral }, approvalHint: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12 },
+  scopeSection: { backgroundColor: colors.white, borderRadius: 18, padding: 14, marginTop: 4, marginBottom: 10 }, scopeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, scopeChip: { borderRadius: 12, backgroundColor: colors.sage, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 11, paddingVertical: 8 }, scopeChipActive: { backgroundColor: colors.tealMedium, borderColor: colors.tealMedium }, scopeChipText: { color: colors.teal, fontSize: 9, fontWeight: '800' }, scopeChipTextActive: { color: colors.white },
   inviteIllustration: { width: 80, height: 80, borderRadius: 25, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginBottom: 23 }, inviteIllustrationText: { color: colors.tealMedium, fontSize: 44, fontWeight: '900' }, classFound: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCEDE9', borderRadius: 16, padding: 14, marginTop: -4, marginBottom: 10 }, classFoundIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 11 }, classFoundTitle: { color: colors.teal, fontSize: 14, fontWeight: '900' }, classFoundCopy: { color: colors.muted, fontSize: 10, marginTop: 2 }, skipLink: { color: colors.tealMedium, fontSize: 12, fontWeight: '800', textAlign: 'center', marginTop: 21 },
   managementHero: { backgroundColor: colors.teal, padding: 22, paddingBottom: 28, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }, managementTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, managementGreeting: { color: colors.white, fontSize: 26, fontWeight: '900', marginTop: 3 }, managementScope: { color: '#BFD2CD', fontSize: 13, marginTop: 18 }, classSelector: { alignSelf: 'flex-start', backgroundColor: colors.tealMedium, borderWidth: 1, borderColor: '#43736E', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 13 }, classSelectorText: { color: colors.white, fontSize: 11, fontWeight: '800' }, managementContent: { padding: 20, paddingBottom: 30 },
   metricsGrid: { flexDirection: 'row', gap: 9, marginTop: 13, marginBottom: 18 }, metricCard: { flex: 1, minHeight: 95, backgroundColor: colors.white, borderRadius: 16, borderTopWidth: 4, padding: 12, justifyContent: 'center' }, metricValue: { color: colors.teal, fontSize: 23, fontWeight: '900' }, metricLabel: { color: colors.muted, fontSize: 9, lineHeight: 13, marginTop: 4 },

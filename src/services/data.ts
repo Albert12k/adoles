@@ -47,11 +47,11 @@ export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'>) {
   });
 }
 
-export async function uploadAttendanceEvidence(userId: string, localUri: string) {
+export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {
   if (!storage) throw new Error('Firebase Storage ainda não foi configurado.');
   const response = await fetch(localUri);
   const blob = await response.blob();
-  const path = `attendance/${userId}/${Date.now()}.jpg`;
+  const path = `attendance/${classId}/${userId}/${Date.now()}.jpg`;
   const snapshot = await uploadBytes(ref(storage, path), blob, { contentType: blob.type || 'image/jpeg' });
   return getDownloadURL(snapshot.ref);
 }
@@ -63,6 +63,8 @@ export async function submitAttendance(input: {
   quarter: number;
   year: number;
   evidenceUrl: string;
+  districtId?: string;
+  ageGroup?: string;
 }) {
   const firestore = requireFirestore();
   return addDoc(collection(firestore, 'attendance'), {
