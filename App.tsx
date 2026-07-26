@@ -443,7 +443,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           <BackButton onPress={() => setStep('register')} />
           <Text style={styles.authEyebrow}>SEU PAPEL NO VIVA</Text>
           <Text style={styles.authTitle}>Como você vai participar?</Text>
-          <Text style={styles.authCopy}>Isso define a experiência inicial da sua conta.</Text>
+          <Text style={styles.authCopy}>Escolha uma das opções abaixo. Contas de liderança passam por aprovação.</Text>
           {roles.map((item) => (
             <Pressable key={item.key} style={[styles.roleCard, role === item.key && styles.roleCardActive]} onPress={() => setRole(item.key)}>
               <View style={[styles.roleIcon, role === item.key && styles.roleIconActive]}><Text style={[styles.roleIconText, role === item.key && styles.roleIconTextActive]}>{item.icon}</Text></View>
@@ -456,8 +456,15 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
             <View style={styles.scopeWrap}>{(registrationOptions.districts.length ? registrationOptions.districts : [{ id: 'salvador-centro', name: 'Salvador Centro' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { setSelectedDistrict(item.id); setSelectedClass(''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
             {role === 'diretor' && <><Text style={[styles.authLabel, { marginTop: 13 }]}>Classe desejada</Text><View style={styles.scopeWrap}>{(registrationOptions.classes.filter(item => item.districtId === selectedDistrict).length ? registrationOptions.classes.filter(item => item.districtId === selectedDistrict) : [{ id: 'base-geracao', name: 'Base Geração', districtId: selectedDistrict, churchId: '', ageGroup: 'adolescentes' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedClass === item.id && styles.scopeChipActive]} onPress={() => setSelectedClass(item.id)}><Text style={[styles.scopeChipText, selectedClass === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View></>}
           </View>}
-          <Pressable style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)) && styles.buttonDisabled]} disabled={authBusy || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)))} onPress={() => role === 'adolescente' ? setStep('invite') : finishRegistration(role)}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Continuar'}</Text></Pressable>
-          {role !== 'adolescente' && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
+          <Pressable
+            style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)) && styles.buttonDisabled]}
+            disabled={authBusy || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && !selectedDistrict)))}
+            onPress={() => role === 'admin' ? setStep('login') : role === 'adolescente' ? setStep('invite') : finishRegistration(role)}
+          >
+            <Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : role === 'admin' ? 'Entrar como administrador' : 'Continuar'}</Text>
+          </Pressable>
+          {(role === 'diretor' || role === 'coordenador') && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
+          {role === 'admin' && <Text style={styles.approvalHint}>Por segurança, o administrador geral é criado diretamente no Firebase e entra por esta tela.</Text>}
         </ScrollView>
       </SafeAreaView>
     );
