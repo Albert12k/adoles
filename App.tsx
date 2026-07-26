@@ -23,7 +23,7 @@ import { selectAndSubmitAttendancePhoto, selectAndUploadContentPdf } from './src
 import { registerPushNotifications } from './src/services/notifications';
 import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
 import type { ApprovalType } from './src/hooks/useLeadershipData';
-import { createInitialStructure } from './src/services/structure';
+import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -547,7 +547,7 @@ function ActionRow({ icon, title, copy, badge, onPress }: { icon: string; title:
   );
 }
 
-function ManagementDetail({ title, onBack }: { title: string; onBack: () => void }) {
+function ManagementDetail({ title, role, onBack }: { title: string; role: Exclude<Role, 'adolescente'>; onBack: () => void }) {
   const [saved, setSaved] = useState(false);
   const [lessonTitle, setLessonTitle] = useState('Escolhas que transformam');
   const [question, setQuestion] = useState('Quem recebeu a missão de conduzir o povo após Moisés?');
@@ -560,6 +560,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [churchName, setChurchName] = useState('Alto do Guarani');
   const [className, setClassName] = useState('Base Cordilheira');
   const [structureBusy, setStructureBusy] = useState(false);
+  const [structures, setStructures] = useState<StructureItem[]>([]);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -569,6 +570,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
+  useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   const approvalType: ApprovalType | null = title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
@@ -618,8 +620,11 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const saveStructure = async () => {
     setActionError(''); setMemberNotice(''); setStructureBusy(true);
     try {
-      const result = await createInitialStructure({ districtName, churchName, className });
+      const result = role === 'coordenador'
+        ? await createCoordinatorStructure({ churchName, className })
+        : await createInitialStructure({ districtName, churchName, className });
       setMemberNotice(`Estrutura criada. Código da classe: ${result.inviteCode}`);
+      setStructures(await listStructures());
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível criar a estrutura.');
     } finally { setStructureBusy(false); }
@@ -650,14 +655,15 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
         <View style={styles.formCard}><AuthField label="Nome do encontro" placeholder="Ex.: Conexão Distrital" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Local" placeholder="Igreja ou endereço" value="IASD Central" onChangeText={() => {}} /><Pressable style={styles.addQuestion}><Text style={styles.addQuestionText}>＋ Criar novo encontro</Text></Pressable></View>
       </>}
       {isStructure && <>
+        {structures.map(item => <View key={`${item.kind}-${item.id}`} style={styles.structureCard}><View style={styles.structureIcon}><Text style={styles.structureIconText}>{item.kind === 'district' ? '⌘' : item.kind === 'church' ? '⌂' : '◆'}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.detail}</Text></View></View>)}
         <View style={styles.formCard}>
           <Text style={styles.manageTitle}>Nova estrutura</Text>
-          <Text style={styles.manageCopy}>O administrador cadastra o distrito, a igreja e a primeira classe.</Text>
-          <AuthField label="Distrito" placeholder="Ex.: Central" value={districtName} onChangeText={setDistrictName} />
+          <Text style={styles.manageCopy}>{role === 'coordenador' ? 'Cadastre uma igreja e sua classe dentro do seu distrito.' : 'O administrador cadastra o distrito, a igreja e a primeira classe.'}</Text>
+          {role === 'admin' && <AuthField label="Distrito" placeholder="Ex.: Central" value={districtName} onChangeText={setDistrictName} />}
           <AuthField label="Igreja" placeholder="Ex.: Alto do Guarani" value={churchName} onChangeText={setChurchName} />
           <AuthField label="Classe" placeholder="Ex.: Base Cordilheira" value={className} onChangeText={setClassName} />
           <Pressable style={[styles.authPrimary, (structureBusy || !districtName.trim() || !churchName.trim() || !className.trim()) && styles.buttonDisabled]} disabled={structureBusy || !districtName.trim() || !churchName.trim() || !className.trim()} onPress={saveStructure}>
-            <Text style={styles.authPrimaryText}>{structureBusy ? 'Criando estrutura...' : 'Criar distrito, igreja e classe'}</Text>
+            <Text style={styles.authPrimaryText}>{structureBusy ? 'Criando estrutura...' : role === 'coordenador' ? 'Criar igreja e classe' : 'Criar distrito, igreja e classe'}</Text>
           </Pressable>
         </View>
       </>}
@@ -729,7 +735,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
             <View style={styles.sectionHeaderManagement}><Text style={styles.sectionTitle}>Desempenho</Text><Text style={styles.seeAll}>Ver relatório ›</Text></View>
             <View style={styles.performanceCard}><View style={styles.performanceTop}><Text style={styles.weekTitle}>Engajamento no trimestre</Text><Text style={styles.performanceUp}>↑ 12%</Text></View><View style={styles.barChart}>{[42, 58, 51, 72, 66, 81, 86].map((height, index) => <View key={index} style={[styles.chartBar, { height }, index === 6 && styles.chartBarActive]} />)}</View><View style={styles.chartLabels}>{['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'].map(label => <Text key={label} style={styles.chartLabel}>{label}</Text>)}</View></View>
           </>}
-          {section === 'gestao' && (selectedAction ? <ManagementDetail title={selectedAction} onBack={() => setSelectedAction(null)} /> : <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} onPress={() => setSelectedAction(title)} />)}{role === 'diretor' && <ActionRow icon="♙" title="Gerenciar membros" copy="Convite, lista, transferências e acessos" onPress={() => setSelectedAction('Gerenciar membros')} />}</>)}
+          {section === 'gestao' && (selectedAction ? <ManagementDetail title={selectedAction} role={role} onBack={() => setSelectedAction(null)} /> : <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} onPress={() => setSelectedAction(title)} />)}{role === 'diretor' && <ActionRow icon="♙" title="Gerenciar membros" copy="Convite, lista, transferências e acessos" onPress={() => setSelectedAction('Gerenciar membros')} />}</>)}
           {section === 'atividade' && <><Text style={styles.pageEyebrow}>ÚLTIMAS ATUALIZAÇÕES</Text><Text style={styles.pageTitle}>Atividade</Text><Text style={styles.pageIntro}>Acompanhe o que aconteceu recentemente.</Text>{[
             ['✓', 'Presença aprovada', 'Daniel avançou para a semana 7 · há 12 min'],
             ['★', 'Nova conquista', 'Marina completou 4 semanas de estudo · há 1h'],

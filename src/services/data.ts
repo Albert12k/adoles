@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -22,10 +23,16 @@ const requireFirestore = () => {
 };
 
 export async function requestClassEntry(userId: string, inviteCode: string) {
-  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
+  const firestore = requireFirestore();
   if (!userId) throw new Error('Entre na sua conta para usar o convite.');
-  const joinClass = httpsCallable<{ inviteCode: string }, { classId: string; className: string }>(cloudFunctions, 'joinClassByCode');
-  return (await joinClass({ inviteCode: inviteCode.trim().toUpperCase() })).data;
+  const code = inviteCode.trim().toUpperCase();
+  const invite = await getDoc(doc(firestore, 'classInviteCodes', code));
+  if (!invite.exists() || !invite.data().active) throw new Error('Código de convite inválido ou expirado.');
+  const classId = invite.data().classId as string;
+  await addDoc(collection(firestore, 'classJoinRequests'), {
+    userId, classId, districtId: invite.data().districtId, status: 'pending', createdAt: serverTimestamp(),
+  });
+  return { classId, className: '' };
 }
 
 export async function listWeeklyContent(classId: string) {

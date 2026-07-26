@@ -70,6 +70,13 @@ service cloud.firestore {
       allow update: if admin() || coordinatorOf(resource.data.districtId) || directorOf(classId);
     }
 
+    match /classInviteCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if admin() || coordinatorOf(request.resource.data.districtId);
+      allow update: if admin() || coordinatorOf(resource.data.districtId) || directorOf(resource.data.classId);
+    }
+
     match /weeklyContent/{contentId} {
       allow read: if memberOf(resource.data.classId);
       allow create: if directorOf(request.resource.data.classId);
