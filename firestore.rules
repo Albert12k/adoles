@@ -15,7 +15,11 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == userId &&
         request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
       allow update: if admin() || (request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status']));
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status'])) ||
+        (roleIs('coordinator') && resource.data.role == 'student' &&
+          request.resource.data.role == 'director' &&
+          request.resource.data.districtId == profile().districtId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'districtId', 'classIds']));
     }
 
     match /districts/{districtId} {
@@ -30,6 +34,11 @@ service cloud.firestore {
         request.resource.data.requestedRole in ['director', 'coordinator'];
       allow read: if signedIn() && (requestId == request.auth.uid || admin() ||
         (roleIs('coordinator') && resource.data.districtId == profile().districtId));
+      allow update: if admin() || (roleIs('coordinator') &&
+        resource.data.requestedRole == 'director' &&
+        resource.data.districtId == profile().districtId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']) &&
+        request.resource.data.reviewedBy == request.auth.uid);
     }
 
     match /classJoinRequests/{requestId} {
