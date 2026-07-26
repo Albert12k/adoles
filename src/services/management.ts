@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -8,8 +8,19 @@ const requireFunctions = () => {
 };
 
 export async function publishContent(input: { title: string; classId?: string; lessonPdfUrl?: string; bookPdfUrl?: string; week?: number; quarter?: number; year?: number }) {
-  const callable = httpsCallable<typeof input, { contentId: string }>(requireFunctions(), 'publishWeeklyContent');
-  return (await callable(input)).data;
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar.');
+  let classId = input.classId;
+  if (!classId) {
+    const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+    classId = directed.docs[0]?.id;
+  }
+  if (!classId) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
+  const reference = await addDoc(collection(db, 'weeklyContent'), {
+    classId, title: input.title.trim(), lessonPdfUrl: input.lessonPdfUrl ?? null, bookPdfUrl: input.bookPdfUrl ?? null,
+    week: input.week ?? 1, quarter: input.quarter ?? 1, year: input.year ?? new Date().getFullYear(),
+    createdBy: auth.currentUser.uid, publishedAt: serverTimestamp(),
+  });
+  return { contentId: reference.id };
 }
 
 export async function publishQuizContent(input: {

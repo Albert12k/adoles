@@ -12,10 +12,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { firebaseEnabled } from './src/config/firebase';
+import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { requestClassEntry } from './src/services/data';
+import { listWeeklyContent, requestClassEntry, saveStudy } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
@@ -136,16 +136,32 @@ function HomeScreen({ onNavigate, name, pending }: { onNavigate: (tab: Tab) => v
   );
 }
 
-function StudyScreen() {
+function StudyScreen({ classId }: { classId: string }) {
   const [completed, setCompleted] = useState(false);
   const [summary, setSummary] = useState('');
+  const [content, setContent] = useState<{ id: string; title?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [studyError, setStudyError] = useState('');
+  useEffect(() => { if (classId) listWeeklyContent(classId).then(items => setContent((items[0] as { id: string; title?: string } | undefined) ?? null)).catch(() => undefined); }, [classId]);
+  const registerStudy = async () => {
+    if (!firebaseEnabled) return setCompleted(!completed);
+    if (!auth?.currentUser || !classId) return setStudyError('Aguarde a aprovação da sua entrada na classe.');
+    if (!content) return setStudyError('O diretor ainda não publicou a lição desta semana.');
+    if (summary.trim().length < 10) return setStudyError('Escreva um resumo com pelo menos 10 caracteres.');
+    setSaving(true); setStudyError('');
+    try {
+      await saveStudy({ userId: auth.currentUser.uid, classId, contentId: content.id, source: 'lesson', summary: summary.trim(), feedbackVisible: false });
+      setCompleted(true);
+    } catch (error) { setStudyError(error instanceof Error ? error.message : 'Não foi possível registrar o estudo.'); }
+    finally { setSaving(false); }
+  };
   return (
     <View style={styles.pagePad}>
       <Text style={styles.pageEyebrow}>ESTUDO SEMANAL</Text>
       <Text style={styles.pageTitle}>Cresça um pouco a cada dia.</Text>
       <Text style={styles.pageIntro}>Registre o que você aprendeu. Suas anotações são privadas.</Text>
       {[
-        ['📖', 'Lição', 'Escolhas que transformam', '12 min de leitura', '#F8E8C8'],
+        ['📖', 'Lição', content?.title ?? 'Aguardando publicação do diretor', content ? 'Conteúdo da semana' : 'Ainda não disponível', '#F8E8C8'],
         ['✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9'],
         ['▣', 'Livro', 'O maior discurso de Cristo', 'Capítulo 3', '#FBE0D6'],
       ].map(([icon, title, subtitle, meta, bg]) => (
@@ -165,9 +181,10 @@ function StudyScreen() {
         <TextInput multiline value={summary} onChangeText={setSummary} placeholder="O que mais chamou sua atenção?" placeholderTextColor="#8A9892" style={[styles.authInput, styles.summaryInput]} />
         <Text style={styles.charCount}>{summary.length}/500</Text>
       </View>
-      <Pressable style={[styles.primaryButton, completed && styles.buttonDone]} onPress={() => setCompleted(!completed)}>
-        <Text style={styles.primaryButtonText}>{completed ? '✓ Estudo e resumo registrados' : 'Registrar estudo de hoje'}</Text>
+      <Pressable style={[styles.primaryButton, completed && styles.buttonDone]} disabled={saving || completed} onPress={registerStudy}>
+        <Text style={styles.primaryButtonText}>{saving ? 'Salvando...' : completed ? '✓ Estudo e resumo registrados' : 'Registrar estudo de hoje'}</Text>
       </Pressable>
+      {studyError !== '' && <Text style={styles.authError}>{studyError}</Text>}
     </View>
   );
 }
@@ -312,7 +329,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
         )}
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {tab === 'Início' && <HomeScreen onNavigate={setTab} name={student.name} pending={student.pending} />}
-          {tab === 'Estudo' && <StudyScreen />}
+          {tab === 'Estudo' && <StudyScreen classId={student.classId} />}
           {tab === 'Presença' && <AttendanceScreen />}
           {tab === 'Quiz' && <QuizScreen />}
           {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} onExit={onExit} />}
