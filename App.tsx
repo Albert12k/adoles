@@ -16,6 +16,8 @@ import { firebaseEnabled } from './src/config/firebase';
 import { getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import { requestClassEntry } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
+import { publishContent, publishQuizContent } from './src/services/management';
+import { exportLeadershipReport } from './src/services/report';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -513,6 +515,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [question, setQuestion] = useState('Quem recebeu a missão de conduzir o povo após Moisés?');
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
+  const [actionError, setActionError] = useState('');
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -522,6 +525,19 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
+  const saveManagement = async () => {
+    setActionError('');
+    try {
+      if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
+      if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Quiz semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: [{ prompt: question, options: ['Josué', 'Daniel', 'Davi', 'Samuel'], correctIndex: 0 }] });
+      setSaved(true);
+    } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
+  };
+  const exportReport = async () => {
+    setActionError(''); setMemberNotice('Preparando relatório...');
+    try { await exportLeadershipReport(); setMemberNotice('Relatório gerado com sucesso'); }
+    catch (error) { setMemberNotice(''); setActionError(error instanceof Error ? error.message : 'Não foi possível gerar o relatório.'); }
+  };
 
   return (
     <View>
@@ -545,7 +561,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
         {[['Presença', '78%', 78, colors.tealMedium], ['Estudos', '84%', 84, colors.gold], ['Quiz', '71%', 71, colors.coral], ['Desafios', '92%', 92, '#6C83B8']].map(([label, value, progress, color]) => <View key={label as string} style={styles.reportRow}><View style={styles.reportRowTop}><Text style={styles.manageTitle}>{label}</Text><Text style={styles.reportPercent}>{value}</Text></View><Progress value={progress as number} color={color as string} /></View>)}
-        <Pressable style={styles.exportButton}><Text style={styles.exportButtonText}>⇩ Exportar relatório em PDF</Text></Pressable>
+        <Pressable style={styles.exportButton} onPress={exportReport}><Text style={styles.exportButtonText}>⇩ Exportar relatório em PDF</Text></Pressable>
       </>}
       {isEvent && <>
         <View style={styles.eventCard}><View style={styles.eventDate}><Text style={styles.eventDay}>16</Text><Text style={styles.eventMonth}>AGO</Text></View><View style={styles.flex}><Text style={styles.eventTitle}>Conexão Distrital</Text><Text style={styles.eventCopy}>IASD Central · 15h às 18h</Text><Text style={styles.eventPeople}>186 participantes confirmados</Text></View></View>
@@ -562,12 +578,13 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
         ['Lucas Rocha', 'Sem presença há 3 semanas', 'ALTO', colors.coral], ['Beatriz Souza', 'Sem estudo há 2 semanas', 'MÉDIO', colors.gold], ['Rafael Lima', 'Queda de 35% no engajamento', 'MÉDIO', colors.gold],
       ].map(([name, copy, level, color]) => <View key={name} style={styles.riskCard}><View style={[styles.riskLine, { backgroundColor: color }]} /><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><View><Text style={[styles.riskLevel, { color }]}>{level}</Text><Pressable onPress={() => setMemberNotice(`Lembrete preparado para ${name}`)}><Text style={styles.contactLink}>Lembrar</Text></Pressable></View></View>)}</>}
       {memberNotice !== '' && <Text style={styles.successNotice}>✓ {memberNotice}</Text>}
+      {actionError !== '' && <Text style={styles.authError}>{actionError}</Text>}
       {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && <>
         <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>VIVA-7429</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton}><Text style={styles.copyButtonText}>Copiar código</Text></Pressable></View>
         {['Marina Costa', 'João Pedro', 'Daniel Oliveira', 'Sara Lima'].map((name, index) => <View key={name} style={styles.memberRow}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{index === 0 ? 'Diretora auxiliar' : 'Membro ativo'}</Text></View><Pressable onPress={() => setMemberNotice(`Ações abertas para ${name}`)}><Text style={styles.memberMenu}>•••</Text></Pressable></View>)}
         {isMembers && <View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => setMemberNotice('Transferência de liderança preparada')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => setMemberNotice('Acesso selecionado para revogação')}><Text style={styles.memberDangerText}>Revogar acesso</Text></Pressable></View>}
       </>}
-      {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={() => setSaved(true)}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }

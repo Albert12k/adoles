@@ -274,3 +274,88 @@ export const archiveQuarterHallOfFame = onSchedule({ schedule: '0 2 1 1,4,7,10 *
   const year = currentQuarter === 1 ? now.getFullYear() - 1 : now.getFullYear();
   await Promise.all(rankings.docs.map((item, index) => db.collection('hallOfFame').doc(`${year}_Q${quarter}_${item.id}`).set({ year, quarter, classId: item.id, place: index + 1, ...item.data(), archivedAt: FieldValue.serverTimestamp() })));
 });
+
+async function requireLeader(uid: string) {
+  const snapshot = await db.collection('users').doc(uid).get();
+  const profile = snapshot.data();
+  if (!profile || !['admin', 'coordinator', 'director'].includes(profile.role)) throw new HttpsError('permission-denied', 'Acesso exclusivo da liderança.');
+  return profile;
+}
+
+async function requireClassAccess(profile: DocumentData, classId: string) {
+  const classSnapshot = await db.collection('classes').doc(classId).get();
+  if (!classSnapshot.exists) throw new HttpsError('not-found', 'Classe não encontrada.');
+  const classData = classSnapshot.data()!;
+  if (profile.role === 'director' && !profile.classIds?.includes(classId)) throw new HttpsError('permission-denied', 'Classe não autorizada.');
+  if (profile.role === 'coordinator' && profile.districtId !== classData.districtId) throw new HttpsError('permission-denied', 'Classe fora do seu distrito.');
+  return classData;
+}
+
+export const publishWeeklyContent = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profile = await requireLeader(request.auth.uid);
+  const classId = String(request.data?.classId || profile.classIds?.[0] || '');
+  if (!classId) throw new HttpsError('invalid-argument', 'Selecione uma classe.');
+  await requireClassAccess(profile, classId);
+  const title = String(request.data?.title ?? '').trim();
+  if (title.length < 3) throw new HttpsError('invalid-argument', 'Informe o título do conteúdo.');
+  const reference = await db.collection('weeklyContent').add({
+    classId, title, lessonPdfUrl: request.data?.lessonPdfUrl ?? null,
+    bookPdfUrl: request.data?.bookPdfUrl ?? null, week: Number(request.data?.week ?? 1),
+    quarter: Number(request.data?.quarter ?? 1), year: Number(request.data?.year ?? new Date().getFullYear()),
+    createdBy: request.auth.uid, publishedAt: FieldValue.serverTimestamp(),
+  });
+  return { contentId: reference.id };
+});
+
+export const publishQuiz = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profile = await requireLeader(request.auth.uid);
+  const classId = String(request.data?.classId || profile.classIds?.[0] || '');
+  if (!classId) throw new HttpsError('invalid-argument', 'Selecione uma classe.');
+  const classData = await requireClassAccess(profile, classId);
+  const questions = request.data?.questions as Array<{ prompt: string; options: string[]; correctIndex: number }> | undefined;
+  if (!questions?.length || questions.some(item => !item.prompt || item.options?.length < 2 || item.correctIndex < 0 || item.correctIndex >= item.options.length)) throw new HttpsError('invalid-argument', 'Revise as perguntas e alternativas.');
+  const reference = await db.collection('quizzes').add({
+    classId, districtId: classData.districtId ?? '', ageGroup: classData.ageGroup ?? 'adolescentes',
+    title: String(request.data?.title ?? 'Quiz semanal'), active: true,
+    pointsPerQuestion: Math.min(Number(request.data?.pointsPerQuestion ?? 10), 20), questions,
+    releaseAt: Timestamp.fromMillis(Number(request.data?.releaseAt ?? Date.now())),
+    closesAt: Timestamp.fromMillis(Number(request.data?.closesAt ?? Date.now() + 7 * 24 * 60 * 60 * 1000)),
+    createdBy: request.auth.uid, createdAt: FieldValue.serverTimestamp(),
+  });
+  return { quizId: reference.id };
+});
+
+export const reviewLeadershipItem = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profile = await requireLeader(request.auth.uid);
+  const type = String(request.data?.type ?? '');
+  const itemId = String(request.data?.itemId ?? '');
+  const approved = Boolean(request.data?.approved);
+  if (!itemId || !['attendance', 'challenge', 'roleRequest'].includes(type)) throw new HttpsError('invalid-argument', 'Item inválido.');
+
+  if (type === 'attendance') {
+    const reference = db.collection('attendance').doc(itemId);
+    const item = await reference.get();
+    if (!item.exists) throw new HttpsError('not-found', 'Presença não encontrada.');
+    await requireClassAccess(profile, item.data()!.classId);
+    await reference.update({ status: approved ? 'approved' : 'rejected', reviewedBy: request.auth.uid, reviewedAt: FieldValue.serverTimestamp() });
+  } else if (type === 'challenge') {
+    const reference = db.collection('challenges').doc(itemId);
+    const item = await reference.get();
+    if (!item.exists || profile.role === 'director' || (profile.role === 'coordinator' && profile.districtId !== item.data()?.districtId)) throw new HttpsError('permission-denied', 'Desafio não autorizado.');
+    await reference.update({ status: approved ? 'approved' : 'rejected', reviewedBy: request.auth.uid, reviewedAt: FieldValue.serverTimestamp() });
+  } else {
+    if (!['admin', 'coordinator'].includes(profile.role)) throw new HttpsError('permission-denied', 'Aprovação não autorizada.');
+    const requestRef = db.collection('roleRequests').doc(itemId);
+    const roleRequest = await requestRef.get();
+    const data = roleRequest.data();
+    if (!data || (data.requestedRole === 'coordinator' && profile.role !== 'admin') || (profile.role === 'coordinator' && profile.districtId !== data.districtId)) throw new HttpsError('permission-denied', 'Solicitação não autorizada.');
+    const batch = db.batch();
+    batch.update(requestRef, { status: approved ? 'approved' : 'rejected', reviewedBy: request.auth.uid, reviewedAt: FieldValue.serverTimestamp() });
+    if (approved) batch.update(db.collection('users').doc(data.userId), { role: data.requestedRole, districtId: data.districtId ?? null, classIds: data.classId ? FieldValue.arrayUnion(data.classId) : [] });
+    await batch.commit();
+  }
+  return { status: approved ? 'approved' : 'rejected' };
+});
