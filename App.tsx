@@ -25,6 +25,7 @@ import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadersh
 import type { ApprovalType } from './src/hooks/useLeadershipData';
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
+import { useStudentProfile } from './src/hooks/useStudentProfile';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -64,20 +65,22 @@ function Progress({ value, color = colors.gold }: { value: number; color?: strin
   );
 }
 
-function HomeScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
+function HomeScreen({ onNavigate, name, pending }: { onNavigate: (tab: Tab) => void; name: string; pending: boolean }) {
   return (
     <>
       <View style={styles.hero}>
         <View style={styles.heroTop}>
           <View>
             <Text style={styles.eyebrowLight}>SÁBADO, 25 DE JULHO</Text>
-            <Text style={styles.greeting}>Olá, Daniel! 👋</Text>
+            <Text style={styles.greeting}>Olá, {name}! 👋</Text>
           </View>
           <View style={styles.avatar}><Text style={styles.avatarText}>D</Text></View>
         </View>
         <Text style={styles.verse}>“Seja forte e corajoso. Não tenha medo.”</Text>
         <Text style={styles.verseRef}>Josué 1:9</Text>
       </View>
+
+      {pending && <View style={styles.alertCard}><View style={styles.alertDot} /><View style={styles.flex}><Text style={styles.alertTitle}>Entrada aguardando aprovação</Text><Text style={styles.alertCopy}>O diretor da classe recebeu seu pedido. Você terá acesso ao conteúdo assim que ele aprovar.</Text></View></View>}
 
       <View style={styles.streakCard}>
         <View style={styles.streakIcon}><Text style={styles.streakEmoji}>🔥</Text></View>
@@ -228,7 +231,7 @@ function QuizScreen() {
   );
 }
 
-function ProfileScreen() {
+function ProfileScreen({ name, className, onExit }: { name: string; className: string; onExit: () => Promise<void> }) {
   const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes'>('hub');
   const live = useLiveDashboard();
   if (communityView !== 'hub') {
@@ -261,9 +264,9 @@ function ProfileScreen() {
   return (
     <View style={styles.pagePad}>
       <View style={styles.profileTop}>
-        <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>D</Text></View>
-        <Text style={styles.profileName}>Daniel Oliveira</Text>
-        <Text style={styles.profileClass}>Base Geração · Adolescentes</Text>
+        <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{name[0]?.toUpperCase() ?? 'A'}</Text></View>
+        <Text style={styles.profileName}>{name}</Text>
+        <Text style={styles.profileClass}>{className} · Adolescentes</Text>
         <Text style={styles.profileStatus}>“Vivendo com propósito.”</Text>
       </View>
       <View style={styles.statsRow}>
@@ -288,12 +291,14 @@ function ProfileScreen() {
         <Progress value={68} color={colors.coral} />
         <Text style={[styles.cardCaption, { marginTop: 12 }]}>Seu engajamento cresceu nas últimas quatro semanas.</Text>
       </View>
+      <Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair da conta</Text></Pressable>
     </View>
   );
 }
 
-function MainApp({ onExit }: { onExit: () => void }) {
+function MainApp({ onExit }: { onExit: () => Promise<void> }) {
   const [tab, setTab] = useState<Tab>('Início');
+  const student = useStudentProfile();
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style={tab === 'Início' ? 'light' : 'dark'} />
@@ -306,11 +311,11 @@ function MainApp({ onExit }: { onExit: () => void }) {
           </View>
         )}
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {tab === 'Início' && <HomeScreen onNavigate={setTab} />}
+          {tab === 'Início' && <HomeScreen onNavigate={setTab} name={student.name} pending={student.pending} />}
           {tab === 'Estudo' && <StudyScreen />}
           {tab === 'Presença' && <AttendanceScreen />}
           {tab === 'Quiz' && <QuizScreen />}
-          {tab === 'Mais' && <ProfileScreen />}
+          {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} onExit={onExit} />}
         </ScrollView>
         <View style={styles.nav}>
           {tabs.map((item) => {
