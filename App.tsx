@@ -23,6 +23,7 @@ import { selectAndSubmitAttendancePhoto, selectAndUploadContentPdf } from './src
 import { registerPushNotifications } from './src/services/notifications';
 import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
 import type { ApprovalType } from './src/hooks/useLeadershipData';
+import { createInitialStructure } from './src/services/structure';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -555,6 +556,10 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [actionError, setActionError] = useState('');
   const [uploadedPdf, setUploadedPdf] = useState<{ name: string; url: string } | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [districtName, setDistrictName] = useState('Central');
+  const [churchName, setChurchName] = useState('Alto do Guarani');
+  const [className, setClassName] = useState('Base Cordilheira');
+  const [structureBusy, setStructureBusy] = useState(false);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -610,6 +615,15 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
     try { await exportLeadershipReport(); setMemberNotice('Relatório gerado com sucesso'); }
     catch (error) { setMemberNotice(''); setActionError(error instanceof Error ? error.message : 'Não foi possível gerar o relatório.'); }
   };
+  const saveStructure = async () => {
+    setActionError(''); setMemberNotice(''); setStructureBusy(true);
+    try {
+      const result = await createInitialStructure({ districtName, churchName, className });
+      setMemberNotice(`Estrutura criada. Código da classe: ${result.inviteCode}`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível criar a estrutura.');
+    } finally { setStructureBusy(false); }
+  };
 
   return (
     <View>
@@ -636,11 +650,16 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
         <View style={styles.formCard}><AuthField label="Nome do encontro" placeholder="Ex.: Conexão Distrital" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Local" placeholder="Igreja ou endereço" value="IASD Central" onChangeText={() => {}} /><Pressable style={styles.addQuestion}><Text style={styles.addQuestionText}>＋ Criar novo encontro</Text></Pressable></View>
       </>}
       {isStructure && <>
-        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><Text style={styles.searchPlaceholder}>Buscar distrito, igreja ou classe</Text></View>
-        {[
-          ['Salvador Centro', '12 classes · 286 membros', '82%'], ['Salvador Norte', '9 classes · 214 membros', '76%'], ['Litoral', '7 classes · 168 membros', '88%'], ['Metropolitano', '11 classes · 241 membros', '71%'],
-        ].map(([name, copy, percent]) => <Pressable key={name} style={styles.structureCard}><View style={styles.structureIcon}><Text style={styles.structureIconText}>⌂</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.structurePercent}>{percent}</Text><Text style={styles.chevron}>›</Text></Pressable>)}
-        <Pressable style={styles.outlineButton}><Text style={styles.outlineButtonText}>＋ Adicionar novo cadastro</Text></Pressable>
+        <View style={styles.formCard}>
+          <Text style={styles.manageTitle}>Nova estrutura</Text>
+          <Text style={styles.manageCopy}>O administrador cadastra o distrito, a igreja e a primeira classe.</Text>
+          <AuthField label="Distrito" placeholder="Ex.: Central" value={districtName} onChangeText={setDistrictName} />
+          <AuthField label="Igreja" placeholder="Ex.: Alto do Guarani" value={churchName} onChangeText={setChurchName} />
+          <AuthField label="Classe" placeholder="Ex.: Base Cordilheira" value={className} onChangeText={setClassName} />
+          <Pressable style={[styles.authPrimary, (structureBusy || !districtName.trim() || !churchName.trim() || !className.trim()) && styles.buttonDisabled]} disabled={structureBusy || !districtName.trim() || !churchName.trim() || !className.trim()} onPress={saveStructure}>
+            <Text style={styles.authPrimaryText}>{structureBusy ? 'Criando estrutura...' : 'Criar distrito, igreja e classe'}</Text>
+          </Pressable>
+        </View>
       </>}
       {isRisk && <>{[
         ['Lucas Rocha', 'Sem presença há 3 semanas', 'ALTO', colors.coral], ['Beatriz Souza', 'Sem estudo há 2 semanas', 'MÉDIO', colors.gold], ['Rafael Lima', 'Queda de 35% no engajamento', 'MÉDIO', colors.gold],
