@@ -11,6 +11,8 @@
     ,{ "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "challenges", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "roleRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "classJoinRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "classMembers", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

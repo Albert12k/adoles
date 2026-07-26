@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { arrayUnion, doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -23,16 +23,19 @@ export async function publishQuizContent(input: {
   return (await callable(input)).data;
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest', itemId: string, approved: boolean) {
-  if (type === 'roleRequest') {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest', itemId: string, approved: boolean) {
+  if (type === 'roleRequest' || type === 'classJoinRequest') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para aprovar a solicitação.');
     await runTransaction(db, async transaction => {
-      const requestRef = doc(db!, 'roleRequests', itemId);
+      const requestRef = doc(db!, type === 'roleRequest' ? 'roleRequests' : 'classJoinRequests', itemId);
       const requestSnapshot = await transaction.get(requestRef);
       if (!requestSnapshot.exists()) throw new Error('Solicitação não encontrada.');
       const request = requestSnapshot.data();
       if (request.status !== 'pending') throw new Error('Esta solicitação já foi analisada.');
-      if (approved) {
+      if (approved && type === 'classJoinRequest') {
+        transaction.update(doc(db!, 'users', request.userId), { classIds: arrayUnion(request.classId), districtId: request.districtId });
+        transaction.set(doc(db!, 'classMembers', `${request.classId}_${request.userId}`), { classId: request.classId, userId: request.userId, name: request.name ?? 'Adolescente', role: 'student', active: true, joinedAt: serverTimestamp() });
+      } else if (approved) {
         const userRef = doc(db!, 'users', request.userId);
         if (request.requestedRole === 'director') {
           if (!request.classId) throw new Error('A solicitação não possui uma classe válida.');
@@ -53,11 +56,34 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
 }
 
 export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string }) {
+  if (input.action === 'regenerateCode') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
+    const code = `VIVA-${Math.floor(1000 + Math.random() * 9000)}`;
+    await runTransaction(db, async transaction => {
+      const inviteRef = doc(db!, 'classInvites', input.classId);
+      const current = await transaction.get(inviteRef);
+      const data = current.data();
+      if (!data) throw new Error('Convite da classe não encontrado.');
+      if (data.inviteCode) transaction.update(doc(db!, 'classInviteCodes', data.inviteCode), { active: false });
+      transaction.set(doc(db!, 'classInviteCodes', code), { classId: input.classId, districtId: data.districtId, active: true, createdAt: serverTimestamp() });
+      transaction.update(inviteRef, { inviteCode: code, updatedAt: serverTimestamp(), updatedBy: auth!.currentUser!.uid });
+    });
+    return { success: true, inviteCode: code };
+  }
   const callable = httpsCallable<typeof input, { success?: boolean; inviteCode?: string; className?: string }>(requireFunctions(), 'manageClassMembership');
   return (await callable(input)).data;
 }
 
 export async function getManagedClass(classId?: string) {
-  const callable = httpsCallable<{ classId?: string }, { classId: string; className: string; inviteCode: string; members: Array<{ id: string; name: string; role: string }> }>(requireFunctions(), 'getManagedClass');
-  return (await callable({ classId })).data;
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
+  const classes = classId
+    ? await getDocs(query(collection(db, 'classes'), where('__name__', '==', classId), limit(1)))
+    : await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  if (classes.empty) return { classId: '', className: '', inviteCode: '', members: [] };
+  const selected = classes.docs[0];
+  const [invites, members] = await Promise.all([
+    getDocs(query(collection(db, 'classInvites'), where('classId', '==', selected.id), limit(1))),
+    getDocs(query(collection(db, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true), limit(100))),
+  ]);
+  return { classId: selected.id, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: members.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) };
 }

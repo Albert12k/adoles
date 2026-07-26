@@ -8,6 +8,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -29,7 +30,7 @@ export async function requestClassEntry(userId: string, inviteCode: string) {
   const invite = await getDoc(doc(firestore, 'classInviteCodes', code));
   if (!invite.exists() || !invite.data().active) throw new Error('Código de convite inválido ou expirado.');
   const classId = invite.data().classId as string;
-  await addDoc(collection(firestore, 'classJoinRequests'), {
+  await setDoc(doc(firestore, 'classJoinRequests', `${classId}_${userId}`), {
     userId, classId, districtId: invite.data().districtId, status: 'pending', createdAt: serverTimestamp(),
   });
   return { classId, className: '' };

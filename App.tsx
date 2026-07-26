@@ -571,7 +571,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
-  const approvalType: ApprovalType | null = title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const approvalType: ApprovalType | null = title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
   const displayApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
@@ -694,6 +694,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       : [['8', 'distritos', colors.tealMedium], ['47', 'classes', colors.gold], ['1.124', 'membros', colors.coral]];
   const actions = role === 'diretor'
     ? [
+      ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
       ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
