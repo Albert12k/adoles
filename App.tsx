@@ -17,10 +17,12 @@ import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUse
 import type { RegistrationOptions } from './src/services/auth';
 import { requestClassEntry } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
-import { publishContent, publishQuizContent } from './src/services/management';
+import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
 import { selectAndSubmitAttendancePhoto, selectAndUploadContentPdf } from './src/services/media';
 import { registerPushNotifications } from './src/services/notifications';
+import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
+import type { ApprovalType } from './src/hooks/useLeadershipData';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -545,6 +547,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [uploadedPdf, setUploadedPdf] = useState<{ name: string; url: string } | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState('');
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
   const isContent = title.includes('Conteúdo');
@@ -554,6 +557,33 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
+  const approvalType: ApprovalType | null = title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const liveApprovals = usePendingApprovals(approvalType);
+  const classManagement = useClassManagement();
+  const displayApprovals = liveApprovals.length ? liveApprovals : [
+    { id: '', name: 'Marina Costa', copy: title.includes('Presença') ? 'Foto enviada hoje · 09:12' : 'Resumo da lição 4 · 246 palavras' },
+    { id: '', name: 'João Pedro', copy: title.includes('Presença') ? 'Foto enviada hoje · 09:36' : 'Resumo da Bíblia · Josué 1' },
+    { id: '', name: 'Sara Lima', copy: title.includes('Presença') ? 'Foto enviada hoje · 10:04' : 'Resumo do livro · capítulo 3' },
+  ];
+  const displayMembers = classManagement.members.length ? classManagement.members : [
+    { id: 'marina-demo', name: 'Marina Costa', role: 'director' }, { id: 'joao-demo', name: 'João Pedro', role: 'student' }, { id: 'daniel-demo', name: 'Daniel Oliveira', role: 'student' }, { id: 'sara-demo', name: 'Sara Lima', role: 'student' },
+  ];
+  const approveItem = async (item: { id: string; name: string }) => {
+    if (!firebaseEnabled || !approvalType || !item.id) return toggleApproval(item.name);
+    setActionError('');
+    try { await reviewLeadershipItem(approvalType, item.id, true); toggleApproval(item.name); }
+    catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível aprovar.'); }
+  };
+  const runMembershipAction = async (action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector') => {
+    if (!firebaseEnabled) return setMemberNotice('Ação concluída no modo demonstrativo');
+    if (!classManagement.classId) return setActionError('Nenhuma classe de liderança foi encontrada.');
+    if (action !== 'regenerateCode' && !selectedMemberId) return setActionError('Selecione um membro primeiro.');
+    setActionError('');
+    try {
+      const result = await manageClassMembership({ action, classId: classManagement.classId, targetUserId: selectedMemberId || undefined });
+      setMemberNotice(result.inviteCode ? `Novo código: ${result.inviteCode}` : 'Ação concluída com sucesso');
+    } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível concluir a ação.'); }
+  };
   const saveManagement = async () => {
     setActionError('');
     try {
@@ -588,11 +618,7 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
         <View style={styles.formCard}><Text style={styles.authLabel}>Pergunta 1</Text><TextInput multiline value={question} onChangeText={setQuestion} style={[styles.authInput, styles.textArea]} />{['Josué', 'Daniel', 'Davi', 'Samuel'].map((option, index) => <View key={option} style={[styles.quizEditOption, index === 0 && styles.quizEditCorrect]}><Text style={styles.optionLetter}>{String.fromCharCode(65 + index)}</Text><Text style={styles.optionText}>{option}</Text>{index === 0 && <Text style={styles.correctLabel}>CORRETA</Text>}</View>)}<Pressable style={styles.addQuestion}><Text style={styles.addQuestionText}>＋ Adicionar pergunta</Text></Pressable></View>
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Liberar no sábado</Text><Text style={styles.manageCopy}>Abertura automática às 00h</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
-      {isApproval && <>{[
-        ['Marina Costa', title.includes('Presença') ? 'Foto enviada hoje · 09:12' : 'Resumo da lição 4 · 246 palavras'],
-        ['João Pedro', title.includes('Presença') ? 'Foto enviada hoje · 09:36' : 'Resumo da Bíblia · Josué 1'],
-        ['Sara Lima', title.includes('Presença') ? 'Foto enviada hoje · 10:04' : 'Resumo do livro · capítulo 3'],
-      ].map(([name, copy]) => { const done = approved.includes(name); return <View key={name} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => toggleApproval(name)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable></View>; })}</>}
+      {isApproval && <>{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable></View>; })}</>}
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
         {[['Presença', '78%', 78, colors.tealMedium], ['Estudos', '84%', 84, colors.gold], ['Quiz', '71%', 71, colors.coral], ['Desafios', '92%', 92, '#6C83B8']].map(([label, value, progress, color]) => <View key={label as string} style={styles.reportRow}><View style={styles.reportRowTop}><Text style={styles.manageTitle}>{label}</Text><Text style={styles.reportPercent}>{value}</Text></View><Progress value={progress as number} color={color as string} /></View>)}
@@ -615,9 +641,9 @@ function ManagementDetail({ title, onBack }: { title: string; onBack: () => void
       {memberNotice !== '' && <Text style={styles.successNotice}>✓ {memberNotice}</Text>}
       {actionError !== '' && <Text style={styles.authError}>{actionError}</Text>}
       {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && <>
-        <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>VIVA-7429</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton}><Text style={styles.copyButtonText}>Copiar código</Text></Pressable></View>
-        {['Marina Costa', 'João Pedro', 'Daniel Oliveira', 'Sara Lima'].map((name, index) => <View key={name} style={styles.memberRow}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{index === 0 ? 'Diretora auxiliar' : 'Membro ativo'}</Text></View><Pressable onPress={() => setMemberNotice(`Ações abertas para ${name}`)}><Text style={styles.memberMenu}>•••</Text></Pressable></View>)}
-        {isMembers && <View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => setMemberNotice('Transferência de liderança preparada')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => setMemberNotice('Acesso selecionado para revogação')}><Text style={styles.memberDangerText}>Revogar acesso</Text></Pressable></View>}
+        <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>{classManagement.inviteCode || 'VIVA-7429'}</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton} onPress={() => runMembershipAction('regenerateCode')}><Text style={styles.copyButtonText}>Gerar novo código</Text></Pressable></View>
+        {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
+        {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
       {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
@@ -751,6 +777,7 @@ const styles = StyleSheet.create({
   eventCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal, borderRadius: 20, padding: 16, marginBottom: 14 }, eventDate: { width: 58, height: 65, borderRadius: 15, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 14 }, eventDay: { color: colors.teal, fontSize: 25, fontWeight: '900' }, eventMonth: { color: colors.teal, fontSize: 9, fontWeight: '900' }, eventTitle: { color: colors.white, fontSize: 15, fontWeight: '900' }, eventCopy: { color: '#BFD2CD', fontSize: 10, marginTop: 4 }, eventPeople: { color: colors.gold, fontSize: 9, fontWeight: '800', marginTop: 8 },
   searchBox: { height: 50, borderRadius: 15, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, marginBottom: 12 }, searchIcon: { color: colors.teal, fontSize: 20, marginRight: 10 }, searchPlaceholder: { color: '#8A9892', fontSize: 11 }, structureCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 12, marginBottom: 9 }, structureIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center', marginRight: 11 }, structureIconText: { color: colors.teal, fontSize: 17, fontWeight: '900' }, structurePercent: { color: colors.tealMedium, fontSize: 11, fontWeight: '900' }, outlineButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: colors.coral, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, outlineButtonText: { color: colors.coral, fontSize: 11, fontWeight: '900' },
   riskCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 12, marginBottom: 9, overflow: 'hidden' }, riskLine: { width: 4, alignSelf: 'stretch', borderRadius: 3, marginRight: 10 }, riskLevel: { fontSize: 8, fontWeight: '900', textAlign: 'right' }, contactLink: { color: colors.tealMedium, fontSize: 9, fontWeight: '900', marginTop: 7 }, successNotice: { color: colors.tealMedium, backgroundColor: '#DCEDE9', borderRadius: 13, overflow: 'hidden', padding: 11, textAlign: 'center', fontSize: 9, fontWeight: '800', marginBottom: 10 }, memberMenu: { color: colors.teal, fontSize: 16, fontWeight: '900', padding: 8 }, memberActions: { flexDirection: 'row', gap: 8, marginTop: 6 }, memberActionButton: { flex: 1, minHeight: 44, borderRadius: 13, backgroundColor: '#DCEDE9', alignItems: 'center', justifyContent: 'center' }, memberActionText: { color: colors.teal, fontSize: 9, fontWeight: '900' }, memberDangerButton: { flex: 1, minHeight: 44, borderRadius: 13, backgroundColor: '#FBE0D6', alignItems: 'center', justifyContent: 'center' }, memberDangerText: { color: colors.coral, fontSize: 9, fontWeight: '900' },
+  memberRowSelected: { borderWidth: 2, borderColor: colors.gold, backgroundColor: '#FFF9EC' }, removeMemberButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 7 }, removeMemberText: { color: colors.coral, fontSize: 9, fontWeight: '800' },
   shell: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: colors.sage },
   scroll: { flex: 1 }, content: { paddingBottom: 28 }, flex: { flex: 1 },
   hero: { backgroundColor: colors.teal, paddingHorizontal: 22, paddingTop: 25, paddingBottom: 42, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },

@@ -24,6 +24,7 @@ export async function registerUser(name: string, email: string, password: string
   if (role !== 'student') {
     await setDoc(doc(services.db, 'roleRequests', credential.user.uid), {
       userId: credential.user.uid,
+      name,
       requestedRole: role,
       districtId: scope.districtId ?? null,
       classId: scope.classId ?? null,

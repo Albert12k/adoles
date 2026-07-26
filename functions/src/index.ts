@@ -3,6 +3,7 @@ import { DocumentData, FieldValue, getFirestore, Timestamp } from 'firebase-admi
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { randomBytes } from 'node:crypto';
 
 initializeApp();
 const db = getFirestore();
@@ -13,14 +14,16 @@ export const joinClassByCode = onCall({ region }, async request => {
   const inviteCode = String(request.data?.inviteCode ?? '').trim().toUpperCase();
   if (inviteCode.length < 5) throw new HttpsError('invalid-argument', 'Código de convite inválido.');
 
-  const classes = await db.collection('classes')
+  const invites = await db.collection('classInvites')
     .where('inviteCode', '==', inviteCode)
     .where('active', '==', true)
     .limit(1)
     .get();
-  if (classes.empty) throw new HttpsError('not-found', 'Nenhuma classe ativa foi encontrada.');
+  if (invites.empty) throw new HttpsError('not-found', 'Nenhuma classe ativa foi encontrada.');
 
-  const classRef = classes.docs[0].ref;
+  const classRef = db.collection('classes').doc(invites.docs[0].data().classId);
+  const classSnapshot = await classRef.get();
+  if (!classSnapshot.exists || !classSnapshot.data()?.active) throw new HttpsError('not-found', 'Nenhuma classe ativa foi encontrada.');
   const userRef = db.collection('users').doc(request.auth.uid);
   await db.runTransaction(async transaction => {
     const user = await transaction.get(userRef);
@@ -30,7 +33,7 @@ export const joinClassByCode = onCall({ region }, async request => {
     transaction.update(userRef, { classIds: FieldValue.arrayUnion(classRef.id) });
     transaction.update(classRef, { activeMemberCount: FieldValue.increment(1) });
   });
-  return { classId: classRef.id, className: classes.docs[0].data().name };
+  return { classId: classRef.id, className: classSnapshot.data()?.name };
 });
 
 export const scoreStudy = onDocumentCreated({ document: 'studyRecords/{recordId}', region }, async event => {
@@ -275,11 +278,11 @@ export const archiveQuarterHallOfFame = onSchedule({ schedule: '0 2 1 1,4,7,10 *
   await Promise.all(rankings.docs.map((item, index) => db.collection('hallOfFame').doc(`${year}_Q${quarter}_${item.id}`).set({ year, quarter, classId: item.id, place: index + 1, ...item.data(), archivedAt: FieldValue.serverTimestamp() })));
 });
 
-async function requireLeader(uid: string) {
+async function requireLeader(uid: string): Promise<DocumentData> {
   const snapshot = await db.collection('users').doc(uid).get();
   const profile = snapshot.data();
   if (!profile || !['admin', 'coordinator', 'director'].includes(profile.role)) throw new HttpsError('permission-denied', 'Acesso exclusivo da liderança.');
-  return profile;
+  return { ...profile, userId: uid } as DocumentData;
 }
 
 export const getRegistrationOptions = onCall({ region }, async () => {
@@ -299,7 +302,7 @@ async function requireClassAccess(profile: DocumentData, classId: string) {
   const classSnapshot = await db.collection('classes').doc(classId).get();
   if (!classSnapshot.exists) throw new HttpsError('not-found', 'Classe não encontrada.');
   const classData = classSnapshot.data()!;
-  if (profile.role === 'director' && !profile.classIds?.includes(classId)) throw new HttpsError('permission-denied', 'Classe não autorizada.');
+  if (profile.role === 'director' && !classData.directorIds?.includes(profile.userId)) throw new HttpsError('permission-denied', 'Classe não autorizada.');
   if (profile.role === 'coordinator' && profile.districtId !== classData.districtId) throw new HttpsError('permission-denied', 'Classe fora do seu distrito.');
   return classData;
 }
@@ -385,4 +388,76 @@ export const sendPushNotification = onDocumentCreated({ document: 'notifications
     body: JSON.stringify({ to: token, sound: 'default', title: notification.title, body: notification.body, data: { notificationId: event.params.notificationId, type: notification.type } }),
   });
   if (!response.ok) console.error('Falha ao enviar push', response.status, await response.text());
+});
+
+export const manageClassMembership = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profile = await requireLeader(request.auth.uid);
+  const classId = String(request.data?.classId ?? '');
+  const action = String(request.data?.action ?? '');
+  const targetUserId = String(request.data?.targetUserId ?? '');
+  if (!classId || !['regenerateCode', 'removeMember', 'transferLeadership', 'revokeDirector'].includes(action)) throw new HttpsError('invalid-argument', 'Ação inválida.');
+  const classData = await requireClassAccess(profile, classId);
+  const classRef = db.collection('classes').doc(classId);
+
+  if (action === 'regenerateCode') {
+    const inviteCode = `VIVA-${randomBytes(3).toString('hex').toUpperCase()}`;
+    await db.collection('classInvites').doc(classId).set({ classId, districtId: classData.districtId, inviteCode, active: true, updatedAt: FieldValue.serverTimestamp(), updatedBy: request.auth.uid });
+    await classRef.update({ inviteCode: FieldValue.delete() });
+    return { inviteCode };
+  }
+  if (!targetUserId) throw new HttpsError('invalid-argument', 'Selecione um usuário.');
+  const targetRef = db.collection('users').doc(targetUserId);
+  const target = await targetRef.get();
+  if (!target.exists || !((target.data()?.classIds ?? []) as string[]).includes(classId)) throw new HttpsError('failed-precondition', 'Usuário não pertence à classe.');
+
+  if (action === 'removeMember') {
+    await db.runTransaction(async transaction => {
+      const currentClass = await transaction.get(classRef);
+      transaction.update(targetRef, { classIds: FieldValue.arrayRemove(classId) });
+      transaction.update(classRef, { activeMemberCount: Math.max(Number(currentClass.data()?.activeMemberCount ?? 1) - 1, 0), directorIds: FieldValue.arrayRemove(targetUserId) });
+    });
+    const otherLeadership = await db.collection('classes').where('directorIds', 'array-contains', targetUserId).limit(1).get();
+    if (otherLeadership.empty) await targetRef.update({ role: 'student' });
+  } else if (action === 'transferLeadership') {
+    const batch = db.batch();
+    batch.update(targetRef, { role: 'director' });
+    const nextDirectors = [...new Set([...(classData.directorIds ?? []).filter((id: string) => id !== request.auth!.uid), targetUserId])];
+    batch.update(classRef, { directorIds: nextDirectors, previousDirectorId: request.auth.uid, leadershipUpdatedAt: FieldValue.serverTimestamp() });
+    if (profile.role === 'director') {
+      const otherLeadership = await db.collection('classes').where('directorIds', 'array-contains', request.auth.uid).get();
+      if (!otherLeadership.docs.some(item => item.id !== classId)) batch.update(db.collection('users').doc(request.auth.uid), { role: 'student' });
+    }
+    await batch.commit();
+  } else {
+    if (profile.role === 'director' && targetUserId === request.auth.uid) throw new HttpsError('failed-precondition', 'Transfira a liderança antes de revogar seu próprio acesso.');
+    const batch = db.batch();
+    batch.update(classRef, { directorIds: FieldValue.arrayRemove(targetUserId) });
+    const otherLeadership = await db.collection('classes').where('directorIds', 'array-contains', targetUserId).get();
+    if (!otherLeadership.docs.some(item => item.id !== classId)) batch.update(targetRef, { role: 'student' });
+    await batch.commit();
+  }
+  return { success: true, className: classData.name };
+});
+
+export const getManagedClass = onCall({ region }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const profile = await requireLeader(request.auth.uid);
+  let classId = String(request.data?.classId ?? '');
+  if (!classId && profile.role === 'director') {
+    const directed = await db.collection('classes').where('directorIds', 'array-contains', request.auth.uid).limit(1).get();
+    classId = directed.docs[0]?.id ?? '';
+  }
+  if (!classId) throw new HttpsError('invalid-argument', 'Selecione uma classe.');
+  const classData = await requireClassAccess(profile, classId);
+  const [members, invite] = await Promise.all([
+    db.collection('users').where('classIds', 'array-contains', classId).get(),
+    db.collection('classInvites').doc(classId).get(),
+  ]);
+  return {
+    classId,
+    className: classData.name,
+    inviteCode: invite.data()?.inviteCode ?? '',
+    members: members.docs.map(item => ({ id: item.id, name: item.data().name ?? 'Membro', role: item.data().role ?? 'student' })),
+  };
 });

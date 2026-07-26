@@ -17,9 +17,10 @@ batch.set(district, { name: 'Salvador Centro', active: true });
 batch.set(church, { name: 'IASD Central', districtId: district.id, active: true });
 batch.set(ministryClass, {
   name: 'Base Geração', churchId: church.id, districtId: district.id,
-  ageGroup: 'adolescentes', directorIds: ['director-demo'], inviteCode: 'VIVA-7429',
+  ageGroup: 'adolescentes', directorIds: ['director-demo'],
   activeMemberCount: 4, active: true,
 });
+batch.set(db.collection('classInvites').doc(ministryClass.id), { classId: ministryClass.id, districtId: district.id, inviteCode: 'VIVA-7429', active: true });
 
 batch.set(db.collection('users').doc('director-demo'), {
   name: 'Albert Santos', email: 'diretor@viva.demo', role: 'director',

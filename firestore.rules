@@ -6,12 +6,12 @@ service cloud.firestore {
     function roleIs(role) { return signedIn() && profile().role == role; }
     function admin() { return roleIs('admin'); }
     function coordinatorOf(districtId) { return admin() || (roleIs('coordinator') && profile().districtId == districtId); }
-    function directorOf(classId) { return admin() || (roleIs('director') && classId in profile().classIds); }
+    function directorOf(classId) { return admin() || (roleIs('director') &&
+      request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.directorIds); }
     function memberOf(classId) { return signedIn() && classId in profile().classIds; }
 
     match /users/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || admin() ||
-        (resource.data.classIds.hasAny(profile().classIds) && roleIs('director')));
+      allow read: if signedIn() && (request.auth.uid == userId || admin());
       allow create: if signedIn() && request.auth.uid == userId &&
         request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
       allow update: if admin() || (request.auth.uid == userId &&
@@ -52,6 +52,11 @@ service cloud.firestore {
         (directorOf(classId) && request.resource.data.districtId == resource.data.districtId &&
           request.resource.data.churchId == resource.data.churchId &&
           request.resource.data.directorIds == resource.data.directorIds);
+    }
+
+    match /classInvites/{classId} {
+      allow read: if directorOf(classId) || admin() ||
+        (roleIs('coordinator') && resource.data.districtId == profile().districtId);
     }
 
     match /weeklyContent/{contentId} {

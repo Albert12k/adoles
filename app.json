@@ -2,6 +2,7 @@
   "expo": {
     "name": "VIVA IASD",
     "slug": "app-iasd-adolescentes",
+    "scheme": "vivaiasd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,7 +10,8 @@
     "backgroundColor": "#EEF2ED",
     "plugins": ["expo-notifications"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.albertsantos.vivaiasd"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,6 +21,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
+      ,"package": "com.albertsantos.vivaiasd"
     },
     "web": {
       "favicon": "./assets/favicon.png"
