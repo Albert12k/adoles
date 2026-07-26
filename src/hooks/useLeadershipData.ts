@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, wh
 import { auth, db, firebaseEnabled } from '../config/firebase';
 import { getManagedClass } from '../services/management';
 
-export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest';
+export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord';
 export interface ApprovalItem { id: string; name: string; copy: string; }
 export interface ClassMember { id: string; name: string; role: string; }
 
@@ -18,11 +18,11 @@ export function usePendingApprovals(type: ApprovalType | null) {
       const profile = (await getDoc(doc(db!, 'users', user.uid))).data();
       if (!profile || !active) return;
       let approvalsQuery;
-      if (type === 'attendance') {
+      if (type === 'attendance' || type === 'studyRecord') {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
         const ids = directed.docs.map(item => item.id);
         if (!ids.length) return;
-        approvalsQuery = query(collection(db!, 'attendance'), where('classId', 'in', ids), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(30));
+        approvalsQuery = type === 'attendance' ? query(collection(db!, 'attendance'), where('classId', 'in', ids), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(30)) : query(collection(db!, 'studyRecords'), where('classId', 'in', ids), where('feedbackVisible', '==', false), limit(30));
       } else if (type === 'classJoinRequest') {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
         const ids = directed.docs.map(item => item.id);
@@ -37,7 +37,7 @@ export function usePendingApprovals(type: ApprovalType | null) {
       }
       unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.map(item => {
         const data = item.data();
-        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Novo adolescente', copy: type === 'attendance' ? `Semana ${data.week} · aguardando presença` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
+        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', copy: type === 'studyRecord' ? String(data.summary ?? 'Resumo enviado') : type === 'attendance' ? `Semana ${data.week} · aguardando presença` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
       })));
     })();
     return () => { active = false; unsubscribe(); };

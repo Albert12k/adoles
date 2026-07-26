@@ -45,15 +45,21 @@ export async function listWeeklyContent(classId: string) {
     orderBy('publishedAt', 'desc'),
     limit(13),
   ));
-  return result.docs.map(item => ({ id: item.id, ...item.data() }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { title?: string }) }));
 }
 
-export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'>) {
+export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & { userName?: string }) {
   const firestore = requireFirestore();
   return addDoc(collection(firestore, 'studyRecords'), {
     ...input,
     createdAt: serverTimestamp(),
   });
+}
+
+export async function listMyStudyRecords(userId: string) {
+  const firestore = requireFirestore();
+  const result = await getDocs(query(collection(firestore, 'studyRecords'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(10)));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { feedbackVisible?: boolean; feedback?: string }) }));
 }
 
 export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {

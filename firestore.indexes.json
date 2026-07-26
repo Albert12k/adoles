@@ -14,6 +14,8 @@
     ,{ "collectionGroup": "classJoinRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "classMembers", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "classJoinRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "studyRecords", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
+    ,{ "collectionGroup": "studyRecords", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "feedbackVisible", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

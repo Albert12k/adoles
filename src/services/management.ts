@@ -34,7 +34,17 @@ export async function publishQuizContent(input: {
   return (await callable(input)).data;
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest', itemId: string, approved: boolean) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord', itemId: string, approved: boolean) {
+  if (type === 'studyRecord') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar.');
+    await runTransaction(db, async transaction => {
+      const recordRef = doc(db!, 'studyRecords', itemId);
+      const record = await transaction.get(recordRef);
+      if (!record.exists()) throw new Error('Resumo não encontrado.');
+      transaction.update(recordRef, { score: approved ? 20 : 0, feedbackVisible: true, feedback: approved ? 'Resumo analisado pelo diretor. Continue estudando!' : 'Revise o resumo e envie novamente.', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+    });
+    return { status: approved ? 'approved' : 'rejected' };
+  }
   if (type === 'roleRequest' || type === 'classJoinRequest') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para aprovar a solicitação.');
     await runTransaction(db, async transaction => {

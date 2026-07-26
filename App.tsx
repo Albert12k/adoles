@@ -15,7 +15,7 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { listWeeklyContent, requestClassEntry, saveStudy } from './src/services/data';
+import { listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
@@ -136,13 +136,15 @@ function HomeScreen({ onNavigate, name, pending }: { onNavigate: (tab: Tab) => v
   );
 }
 
-function StudyScreen({ classId }: { classId: string }) {
+function StudyScreen({ classId, userName }: { classId: string; userName: string }) {
   const [completed, setCompleted] = useState(false);
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState<{ id: string; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [studyError, setStudyError] = useState('');
+  const [feedback, setFeedback] = useState('');
   useEffect(() => { if (classId) listWeeklyContent(classId).then(items => setContent((items[0] as { id: string; title?: string } | undefined) ?? null)).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (auth?.currentUser) listMyStudyRecords(auth.currentUser.uid).then(items => { const reviewed = items.find(item => item.feedbackVisible); if (reviewed) setFeedback(String(reviewed.feedback ?? 'Resumo avaliado pelo diretor.')); }).catch(() => undefined); }, [completed]);
   const registerStudy = async () => {
     if (!firebaseEnabled) return setCompleted(!completed);
     if (!auth?.currentUser || !classId) return setStudyError('Aguarde a aprovação da sua entrada na classe.');
@@ -150,7 +152,7 @@ function StudyScreen({ classId }: { classId: string }) {
     if (summary.trim().length < 10) return setStudyError('Escreva um resumo com pelo menos 10 caracteres.');
     setSaving(true); setStudyError('');
     try {
-      await saveStudy({ userId: auth.currentUser.uid, classId, contentId: content.id, source: 'lesson', summary: summary.trim(), feedbackVisible: false });
+      await saveStudy({ userId: auth.currentUser.uid, userName, classId, contentId: content.id, source: 'lesson', summary: summary.trim(), feedbackVisible: false });
       setCompleted(true);
     } catch (error) { setStudyError(error instanceof Error ? error.message : 'Não foi possível registrar o estudo.'); }
     finally { setSaving(false); }
@@ -185,6 +187,7 @@ function StudyScreen({ classId }: { classId: string }) {
         <Text style={styles.primaryButtonText}>{saving ? 'Salvando...' : completed ? '✓ Estudo e resumo registrados' : 'Registrar estudo de hoje'}</Text>
       </Pressable>
       {studyError !== '' && <Text style={styles.authError}>{studyError}</Text>}
+      {feedback !== '' && <Text style={styles.successNotice}>✓ {feedback}</Text>}
     </View>
   );
 }
@@ -329,7 +332,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
         )}
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {tab === 'Início' && <HomeScreen onNavigate={setTab} name={student.name} pending={student.pending} />}
-          {tab === 'Estudo' && <StudyScreen classId={student.classId} />}
+          {tab === 'Estudo' && <StudyScreen classId={student.classId} userName={student.name} />}
           {tab === 'Presença' && <AttendanceScreen />}
           {tab === 'Quiz' && <QuizScreen />}
           {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} onExit={onExit} />}
@@ -594,7 +597,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
-  const approvalType: ApprovalType | null = title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const approvalType: ApprovalType | null = title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
   const displayApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
