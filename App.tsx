@@ -24,6 +24,7 @@ import { registerPushNotifications } from './src/services/notifications';
 import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
 import type { ApprovalType } from './src/hooks/useLeadershipData';
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
+import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -688,16 +689,15 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   );
 }
 
-function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; onExit: () => void }) {
+function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; onExit: () => Promise<void> }) {
   const [section, setSection] = useState<'painel' | 'gestao' | 'atividade' | 'perfil'>('painel');
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const leadership = useLeadershipProfile(role);
   const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
-  const scope = role === 'diretor' ? 'Base Geração · Adolescentes' : role === 'coordenador' ? 'Distrito Salvador Centro' : 'Visão geral do projeto';
-  const metrics = role === 'diretor'
-    ? [['24', 'membros ativos', colors.tealMedium], ['82%', 'engajamento', colors.gold], ['3', 'pendências', colors.coral]]
-    : role === 'coordenador'
-      ? [['12', 'classes', colors.tealMedium], ['286', 'adolescentes', colors.gold], ['5', 'aprovações', colors.coral]]
-      : [['8', 'distritos', colors.tealMedium], ['47', 'classes', colors.gold], ['1.124', 'membros', colors.coral]];
+  const scope = leadership.scope;
+  const metrics = leadership.metrics.map((item, index) => [item[0], item[1], [colors.tealMedium, colors.gold, colors.coral][index]]);
+  const performSignOut = async () => { setSigningOut(true); try { await onExit(); } finally { setSigningOut(false); } };
   const actions = role === 'diretor'
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
@@ -730,7 +730,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       <StatusBar style="light" />
       <View style={styles.shell}>
         <View style={styles.managementHero}>
-          <View style={styles.managementTop}><View><Text style={styles.eyebrowLight}>{roleName.toUpperCase()}</Text><Text style={styles.managementGreeting}>Olá, Albert</Text></View><Pressable style={styles.avatar} onLongPress={onExit}><Text style={styles.avatarText}>A</Text></Pressable></View>
+          <View style={styles.managementTop}><View><Text style={styles.eyebrowLight}>{roleName.toUpperCase()}</Text><Text style={styles.managementGreeting}>Olá, {leadership.name}</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{leadership.name[0]?.toUpperCase() ?? 'U'}</Text></View></View>
           <Text style={styles.managementScope}>{scope}</Text>
           {role === 'diretor' && <Pressable style={styles.classSelector}><Text style={styles.classSelectorText}>Turma ativa: Adolescentes⌄</Text></Pressable>}
         </View>
@@ -749,7 +749,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
             ['◆', 'Desafio enviado', 'Evidência do desafio de julho · ontem'],
             ['▤', 'Resumo recebido', '7 novos resumos aguardam avaliação · ontem'],
           ].map(([icon, title, copy]) => <ActionRow key={title} icon={icon} title={title} copy={copy} />)}</>}
-          {section === 'perfil' && <><View style={styles.profileTop}><View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>A</Text></View><Text style={styles.profileName}>Albert Santos</Text><Text style={styles.profileClass}>{roleName}</Text><Text style={styles.profileStatus}>{scope}</Text></View><ActionRow icon="⚙" title="Configurações" copy="Conta, notificações e privacidade" /><ActionRow icon="?" title="Ajuda" copy="Orientações sobre o aplicativo" /><Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair do protótipo</Text></Pressable></>}
+          {section === 'perfil' && <><View style={styles.profileTop}><View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{leadership.name[0]?.toUpperCase() ?? 'U'}</Text></View><Text style={styles.profileName}>{leadership.name}</Text><Text style={styles.profileClass}>{roleName}</Text><Text style={styles.profileStatus}>{scope}</Text></View><ActionRow icon="⚙" title="Configurações" copy="Conta, notificações e privacidade" /><ActionRow icon="?" title="Ajuda" copy="Orientações sobre o aplicativo" /><Pressable style={styles.signOutButton} disabled={signingOut} onPress={performSignOut}><Text style={styles.signOutText}>{signingOut ? 'Saindo...' : 'Sair da conta'}</Text></Pressable></>}
         </ScrollView>
         <View style={styles.nav}>{[
           ['painel', '⌂', 'Painel'], ['gestao', '▤', 'Gestão'], ['atividade', '◉', 'Atividade'], ['perfil', '●', 'Perfil'],
