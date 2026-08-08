@@ -15,11 +15,11 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy } from './src/services/data';
+import { listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
-import { selectAndSubmitAttendancePhoto, selectAndUploadContentPdf } from './src/services/media';
+import { selectAndUploadContentPdf } from './src/services/media';
 import { registerPushNotifications } from './src/services/notifications';
 import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
 import type { ApprovalType } from './src/hooks/useLeadershipData';
@@ -192,14 +192,19 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
   );
 }
 
-function AttendanceScreen() {
+function AttendanceScreen({ classId, userName }: { classId: string; userName: string }) {
   const [sent, setSent] = useState(false);
   const [sendError, setSendError] = useState('');
-  const sendPhoto = async () => {
+  const [attendanceCount, setAttendanceCount] = useState(0);
+  const [currentStatus, setCurrentStatus] = useState('');
+  const loadAttendance = () => { if (auth?.currentUser) listMyAttendance(auth.currentUser.uid).then(items => { setAttendanceCount(items.filter(item => item.status === 'approved').length); setCurrentStatus(items[0]?.status ?? ''); }).catch(() => undefined); };
+  useEffect(loadAttendance, [classId]);
+  const requestAttendance = async () => {
     if (!firebaseEnabled) return setSent(true);
+    if (!auth?.currentUser || !classId) return setSendError('Você precisa estar em uma classe aprovada.');
     setSendError('');
-    try { const result = await selectAndSubmitAttendancePhoto(7, 3, new Date().getFullYear()); if (result) setSent(true); }
-    catch (error) { setSendError(error instanceof Error ? error.message : 'Não foi possível enviar a foto.'); }
+    try { await submitAttendance({ userId: auth.currentUser.uid, userName, classId, week: 7, quarter: 3, year: new Date().getFullYear() }); setSent(true); setCurrentStatus('pending'); }
+    catch (error) { setSendError(error instanceof Error ? error.message : 'Não foi possível solicitar a presença.'); }
   };
   return (
     <View style={styles.pagePad}>
@@ -216,12 +221,13 @@ function AttendanceScreen() {
         ))}
       </View>
       <View style={styles.statsRow}>
-        <View style={styles.stat}><Text style={styles.statValue}>7</Text><Text style={styles.cardCaption}>presenças</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{attendanceCount}</Text><Text style={styles.cardCaption}>presenças</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>54%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>+70</Text><Text style={styles.cardCaption}>pontos</Text></View>
       </View>
-      <Pressable style={[styles.primaryButton, sent && styles.buttonDone]} onPress={sendPhoto}><Text style={styles.primaryButtonText}>{sent ? '✓ Presença enviada para aprovação' : '📷 Enviar foto da presença'}</Text></Pressable>
-      {sent && <Text style={styles.pendingHint}>Seu diretor receberá a foto e confirmará seu avanço na trilha.</Text>}
+      <Pressable style={[styles.primaryButton, (sent || currentStatus === 'pending' || currentStatus === 'approved') && styles.buttonDone]} disabled={currentStatus === 'pending' || currentStatus === 'approved'} onPress={requestAttendance}><Text style={styles.primaryButtonText}>{currentStatus === 'approved' ? '✓ Presença confirmada' : sent || currentStatus === 'pending' ? '✓ Aguardando confirmação' : 'Solicitar confirmação de presença'}</Text></Pressable>
+      {(sent || currentStatus === 'pending') && <Text style={styles.pendingHint}>Seu diretor recebeu a solicitação e confirmará sua presença.</Text>}
+      {currentStatus === 'rejected' && <Text style={styles.authError}>A presença não foi confirmada. Converse com seu diretor.</Text>}
       {sendError !== '' && <Text style={styles.authError}>{sendError}</Text>}
     </View>
   );
@@ -333,7 +339,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {tab === 'Início' && <HomeScreen onNavigate={setTab} name={student.name} pending={student.pending} />}
           {tab === 'Estudo' && <StudyScreen classId={student.classId} userName={student.name} />}
-          {tab === 'Presença' && <AttendanceScreen />}
+          {tab === 'Presença' && <AttendanceScreen classId={student.classId} userName={student.name} />}
           {tab === 'Quiz' && <QuizScreen />}
           {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} onExit={onExit} />}
         </ScrollView>

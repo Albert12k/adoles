@@ -77,16 +77,26 @@ export async function submitAttendance(input: {
   week: number;
   quarter: number;
   year: number;
-  evidenceUrl: string;
+  evidenceUrl?: string;
+  userName?: string;
   districtId?: string;
   ageGroup?: string;
 }) {
   const firestore = requireFirestore();
-  return addDoc(collection(firestore, 'attendance'), {
+  const record = doc(firestore, 'attendance', `${input.year}_${input.quarter}_${input.week}_${input.userId}`);
+  await setDoc(record, {
     ...input,
+    evidenceUrl: input.evidenceUrl ?? null,
     status: 'pending',
     createdAt: serverTimestamp(),
   });
+  return record;
+}
+
+export async function listMyAttendance(userId: string) {
+  const firestore = requireFirestore();
+  const result = await getDocs(query(collection(firestore, 'attendance'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20)));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { status?: string; week?: number }) }));
 }
 
 export async function reviewAttendance(recordId: string, reviewerId: string, approved: boolean) {

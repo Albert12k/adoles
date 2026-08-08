@@ -35,6 +35,16 @@ export async function publishQuizContent(input: {
 }
 
 export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord', itemId: string, approved: boolean) {
+  if (type === 'attendance') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar a presença.');
+    await runTransaction(db, async transaction => {
+      const recordRef = doc(db!, 'attendance', itemId);
+      const record = await transaction.get(recordRef);
+      if (!record.exists()) throw new Error('Registro de presença não encontrado.');
+      transaction.update(recordRef, { status: approved ? 'approved' : 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+    });
+    return { status: approved ? 'approved' : 'rejected' };
+  }
   if (type === 'studyRecord') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar.');
     await runTransaction(db, async transaction => {
