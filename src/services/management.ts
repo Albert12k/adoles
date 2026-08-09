@@ -153,6 +153,7 @@ export async function publishLatestQuizRanking() {
   const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
   if (directed.empty) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
   const classId = directed.docs[0].id;
+  const classData = directed.docs[0].data();
   const quizzes = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
   const latest = quizzes.docs.sort((a, b) => Number(b.data().releaseAt ?? 0) - Number(a.data().releaseAt ?? 0))[0];
   if (!latest) throw new Error('Nenhum quiz ativo foi encontrado.');
@@ -165,6 +166,9 @@ export async function publishLatestQuizRanking() {
   const batch = writeBatch(db);
   attempts.docs.forEach(item => batch.update(item.ref, { resultPublished: true, publishedAt: serverTimestamp() }));
   batch.set(doc(db, 'quizRankings', latest.id), { quizId: latest.id, classId, title: latest.data().title, weekKey: latest.data().weekKey ?? quizWeek(latest.data().releaseAt).weekKey, weekLabel: latest.data().weekLabel ?? quizWeek(latest.data().releaseAt).weekLabel, entries, published: true, publishedBy: auth.currentUser.uid, publishedAt: serverTimestamp() });
+  const activeMembers = await getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true)));
+  const publishedWeek = latest.data().weekKey ?? quizWeek(latest.data().releaseAt).weekKey;
+  batch.set(doc(db, 'publishedClassScores', `${publishedWeek}_${classId}`), { classId, className: classData.name ?? 'Base', districtId: classData.districtId, ageGroup: classData.ageGroup ?? 'adolescentes', weekKey: publishedWeek, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear(), activeMembers: Math.max(1, activeMembers.size), entries, publishedAt: serverTimestamp() });
   await batch.commit();
   return { quizId: latest.id, entries: entries.length };
 }

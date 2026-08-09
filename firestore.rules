@@ -200,6 +200,12 @@ service cloud.firestore {
       allow create, update: if directorOf(request.resource.data.classId) || admin();
     }
 
+    match /publishedClassScores/{scoreId} {
+      allow read: if signedIn() && resource.data.districtId == profile().districtId;
+      allow create, update: if directorOf(request.resource.data.classId) &&
+        request.resource.data.districtId == get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.districtId;
+    }
+
     match /periodClosures/{closureId} {
       allow read: if signedIn() && (memberOf(resource.data.classId) || directorOf(resource.data.classId) || admin());
       allow create: if directorOf(request.resource.data.classId) || admin();
