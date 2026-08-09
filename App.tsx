@@ -27,7 +27,7 @@ import { createCoordinatorStructure, createInitialStructure, listStructures, typ
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
 import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEvents, type DistrictEvent } from './src/services/events';
-import { closeCurrentPeriod, type PeriodClosure, type PeriodKind } from './src/services/periods';
+import { closeCurrentPeriod, exportPeriodClosure, listPeriodClosures, type PeriodClosure, type PeriodKind } from './src/services/periods';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -299,8 +299,10 @@ function ProfileScreen({ name, className, classId, districtId, onExit }: { name:
   const [events, setEvents] = useState<DistrictEvent[]>([]);
   const [confirmedEvents, setConfirmedEvents] = useState<string[]>([]);
   const [rankingHistory, setRankingHistory] = useState<Array<{ id: string; weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> }>>([]);
+  const [periodHistory, setPeriodHistory] = useState<PeriodClosure[]>([]);
   useEffect(() => { if (districtId) listDistrictEvents(districtId).then(setEvents).catch(() => undefined); }, [districtId]);
   useEffect(() => { if (classId) listQuizRankingHistory(classId).then(setRankingHistory).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) listPeriodClosures(classId).then(setPeriodHistory).catch(() => undefined); }, [classId]);
   const live = useLiveDashboard();
   if (communityView !== 'hub') {
     const content = {
@@ -325,7 +327,7 @@ function ProfileScreen({ name, className, classId, districtId, onExit }: { name:
         </>}
         {communityView === 'flashcards' && <View style={styles.flashGrid}>{[['A fé cresce quando é exercitada.', '#FFF1A8'], ['Josué 1:9 — coragem não é ausência de medo.', '#CFEDE5'], ['Servir também é uma forma de adorar.', '#FFD9CE'], ['Pergunta para o sábado: como aplicar isso?', '#DCE0FA']].map(([text, bg], index) => <View key={text} style={[styles.flashCard, { backgroundColor: bg, transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>NOTA {index + 1}</Text><Text style={styles.flashText}>{text}</Text></View>)}</View>}
         {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
-        {communityView === 'hall' && <>{[['🥇', 'Marina Costa', 'Campeã · Trimestre 2', '1.860 pts'], ['🥈', 'João Pedro', 'Vice-campeão · Trimestre 2', '1.720 pts'], ['🏆', 'Base Geração', 'Classe destaque do distrito', '92%']].map(([icon, name, copy, points]) => <View key={name} style={styles.hallCard}><Text style={styles.hallIcon}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.rankPoints}>{points}</Text></View>)}</>}
+        {communityView === 'hall' && <>{periodHistory.length === 0 && <Text style={styles.pageIntro}>O Hall da Fama será aberto após o primeiro encerramento de trimestre.</Text>}{periodHistory.map(period => <View key={period.id} style={styles.formCard}><Text style={styles.sectionTitle}>{period.kind === 'year' ? '🏆 Melhores do ano' : '⭐ Ranking trimestral'}</Text><Text style={styles.manageCopy}>{period.periodLabel}</Text>{period.entries.slice(0, 10).map(entry => <View key={entry.userId} style={styles.hallCard}><Text style={styles.hallIcon}>{entry.position === 1 ? '🥇' : entry.position === 2 ? '🥈' : entry.position === 3 ? '🥉' : '★'}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{entry.position}º · {entry.name}</Text><Text style={styles.manageCopy}>{entry.summaries} resumos · {entry.attendance} presenças · {entry.correctQuizAnswers} acertos</Text></View><Text style={styles.rankPoints}>{entry.points} pts</Text></View>)}</View>)}</>}
         {communityView === 'notificacoes' && <>{(live.notifications.length > 0 ? live.notifications.map(item => [item.type.toUpperCase(), item.title, item.body, item.read ? 'read' : 'unread']) : [['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora', 'unread'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h', 'read'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem', 'read'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias', 'read']]).map(([tag, title, copy, status]) => <View key={`${tag}_${title}`} style={[styles.notificationCard, status === 'unread' && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{status === 'unread' && <View style={styles.unreadDot} />}</View>)}</>}
         {communityView === 'eventos' && <>{events.length === 0 && <Text style={styles.pageIntro}>Nenhum encontro publicado para seu distrito.</Text>}{events.map(event => <View key={event.id} style={styles.formCard}><Text style={styles.manageTitle}>{event.title}</Text><Text style={styles.manageCopy}>{event.dateLabel} · {event.location}</Text><Pressable style={[styles.approveButton, confirmedEvents.includes(event.id) && styles.approveButtonDone]} disabled={confirmedEvents.includes(event.id)} onPress={async () => { await confirmEventAttendance(event); setConfirmedEvents(items => [...items, event.id]); }}><Text style={styles.approveButtonText}>{confirmedEvents.includes(event.id) ? '✓ Participação confirmada' : 'Confirmar participação'}</Text></Pressable></View>)}</>}
       </View>
@@ -629,6 +631,8 @@ function PeriodClosurePanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<PeriodClosure | null>(null);
+  const [history, setHistory] = useState<PeriodClosure[]>([]);
+  useEffect(() => { listPeriodClosures().then(setHistory).catch(() => undefined); }, []);
   useEffect(() => {
     if (!armedKind || seconds <= 0) return;
     const timer = setTimeout(() => setSeconds(value => value - 1), 1000);
@@ -639,7 +643,7 @@ function PeriodClosurePanel() {
   const confirm = async () => {
     if (!armedKind || seconds > 0) return;
     setBusy(true); setError('');
-    try { setResult(await closeCurrentPeriod(armedKind)); setArmedKind(null); }
+    try { const closure = await closeCurrentPeriod(armedKind); setResult(closure); setHistory(await listPeriodClosures()); setArmedKind(null); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível encerrar o período.'); }
     finally { setBusy(false); }
   };
@@ -647,7 +651,8 @@ function PeriodClosurePanel() {
     <View style={styles.formCard}><Text style={styles.pageEyebrow}>FECHAMENTO OFICIAL</Text><Text style={styles.pageTitle}>Consolide a jornada da turma.</Text><Text style={styles.pageIntro}>O relatório reúne resumos, atividades, acertos nos quizzes e presenças de todos os adolescentes da base.</Text><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => arm('quarter')}><Text style={styles.memberActionText}>Encerrar trimestre</Text></Pressable><Pressable style={styles.memberActionButton} onPress={() => arm('year')}><Text style={styles.memberActionText}>Encerrar ano</Text></Pressable></View></View>
     {armedKind && <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>ATENÇÃO · AÇÃO DEFINITIVA</Text><Text style={styles.inviteCode}>{seconds > 0 ? seconds : 'CONFIRMAR?'}</Text><Text style={styles.cardCaption}>{armedKind === 'quarter' ? 'Você está encerrando o trimestre atual.' : 'Você está encerrando o ano atual e gerando os melhores do ano.'}</Text><Pressable style={[styles.copyButton, seconds > 0 && styles.buttonDisabled]} disabled={seconds > 0 || busy} onPress={confirm}><Text style={styles.copyButtonText}>{busy ? 'Gerando relatório...' : seconds > 0 ? `Aguarde ${seconds}s` : 'Sim, encerrar agora'}</Text></Pressable><Pressable onPress={cancel}><Text style={[styles.skipLink, { color: colors.white }]}>Cancelar encerramento</Text></Pressable></View>}
     {error !== '' && <Text style={styles.authError}>{error}</Text>}
-    {result && <View><Text style={styles.pageEyebrow}>RELATÓRIO CONCLUÍDO</Text><Text style={styles.pageTitle}>{result.periodLabel}</Text>{result.entries.map(entry => <View key={entry.userId} style={styles.formCard}><View style={styles.weekRow}><Text style={styles.manageTitle}>{entry.position}º · {entry.name}</Text><Text style={styles.rankPoints}>{entry.points} pts</Text></View><Text style={styles.manageCopy}>{entry.summaries} resumos · {entry.activities} atividades · {entry.correctQuizAnswers} acertos · {entry.attendance} presenças</Text></View>)}</View>}
+    {result && <View><Text style={styles.pageEyebrow}>RELATÓRIO CONCLUÍDO</Text><Text style={styles.pageTitle}>{result.periodLabel}</Text>{result.entries.map(entry => <View key={entry.userId} style={styles.formCard}><View style={styles.weekRow}><Text style={styles.manageTitle}>{entry.position}º · {entry.name}</Text><Text style={styles.rankPoints}>{entry.points} pts</Text></View><Text style={styles.manageCopy}>{entry.summaries} resumos · {entry.activities} atividades · {entry.correctQuizAnswers} acertos · {entry.attendance} presenças</Text></View>)}<Pressable style={styles.exportButton} onPress={() => exportPeriodClosure(result)}><Text style={styles.exportButtonText}>⇩ Exportar relatório em PDF</Text></Pressable></View>}
+    {history.length > 0 && <View><Text style={styles.sectionTitle}>Histórico de fechamentos</Text>{history.map(report => <View key={report.id} style={styles.formCard}><View style={styles.weekRow}><View><Text style={styles.manageTitle}>{report.periodLabel}</Text><Text style={styles.manageCopy}>{report.entries.length} adolescentes · {report.className}</Text></View><Pressable style={styles.approveButton} onPress={() => exportPeriodClosure(report)}><Text style={styles.approveButtonText}>PDF</Text></Pressable></View></View>)}</View>}
   </View>;
 }
 

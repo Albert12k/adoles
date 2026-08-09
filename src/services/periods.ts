@@ -1,4 +1,7 @@
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { Platform } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 export type PeriodKind = 'quarter' | 'year';
@@ -45,4 +48,27 @@ export async function closeCurrentPeriod(kind: PeriodKind): Promise<PeriodClosur
   const closure = { classId, className: classDoc.data().name, kind, periodKey, periodLabel, entries: ranked, closedBy: auth.currentUser.uid, closedAt: serverTimestamp() };
   await setDoc(doc(db, 'periodClosures', closureId), closure);
   return { id: closureId, classId, className: classDoc.data().name, kind, periodLabel, entries: ranked };
+}
+
+export async function listPeriodClosures(classId?: string): Promise<PeriodClosure[]> {
+  if (!db || !auth?.currentUser) return [];
+  let selectedClassId = classId;
+  if (!selectedClassId) {
+    const classes = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+    selectedClassId = classes.docs[0]?.id;
+  }
+  if (!selectedClassId) return [];
+  const result = await getDocs(query(collection(db, 'periodClosures'), where('classId', '==', selectedClassId), orderBy('closedAt', 'desc'), limit(12)));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<PeriodClosure, 'id'>) }));
+}
+
+const escapeHtml = (value: string | number) => String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]!));
+
+export async function exportPeriodClosure(report: PeriodClosure) {
+  const rows = report.entries.map(entry => `<tr><td>${entry.position}º</td><td>${escapeHtml(entry.name)}</td><td>${entry.summaries}</td><td>${entry.activities}</td><td>${entry.correctQuizAnswers}</td><td>${entry.attendance}</td><td><b>${entry.points}</b></td></tr>`).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#152420;padding:32px}h1{color:#0F3535}.sub{color:#60706A;margin-bottom:24px}table{width:100%;border-collapse:collapse}th{background:#0F3535;color:white}th,td{padding:10px;border:1px solid #DCE5DF;text-align:left}tr:nth-child(even){background:#F3F6F3}.footer{margin-top:24px;color:#60706A;font-size:10px}</style></head><body><h1>Relatório VIVA IASD</h1><div class="sub">${escapeHtml(report.className)} · ${escapeHtml(report.periodLabel)}</div><table><thead><tr><th>Pos.</th><th>Adolescente</th><th>Resumos</th><th>Atividades</th><th>Acertos</th><th>Presenças</th><th>Pontos</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Documento gerado pelo VIVA IASD em ${escapeHtml(new Date().toLocaleString('pt-BR'))}</div></body></html>`;
+  if (Platform.OS === 'web') { await Print.printAsync({ html }); return null; }
+  const file = await Print.printToFileAsync({ html });
+  if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: `Relatório ${report.periodLabel}` });
+  return file.uri;
 }
