@@ -72,14 +72,41 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
-export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; submittedAttempts: number; endedAt?: Date; }
+export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; submittedAttempts: number; totalMembers: number; pendingMembers: Array<{ userId: string; name: string }>; endedAt?: Date; }
 export async function listManagedQuizzes(selectedClassId?: string): Promise<ManagedQuiz[]> {
   if (!db || !auth?.currentUser) return [];
   let classId = selectedClassId;
   if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
   if (!classId) return [];
-  const result = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), limit(30)));
-  return result.docs.map(item => ({ id: item.id, title: item.data().title ?? 'Quiz semanal', releaseAt: Number(item.data().releaseAt ?? 0), closesAt: Number(item.data().closesAt ?? 0), active: item.data().active === true, submittedAttempts: Number(item.data().submittedAttempts ?? 0), endedAt: item.data().endedAt?.toDate?.() })).sort((a, b) => b.releaseAt - a.releaseAt);
+  const [result, membersSnapshot] = await Promise.all([
+    getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), limit(30))),
+    getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true), limit(300))),
+  ]);
+  const members = membersSnapshot.docs.filter(item => item.data().role !== 'director').map(item => ({ userId: String(item.data().userId), name: String(item.data().name ?? 'Adolescente') }));
+  const items = await Promise.all(result.docs.map(async item => {
+    const data = item.data(); const isActive = data.active === true && Number(data.closesAt ?? 0) > Date.now();
+    if (!isActive) return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: false, submittedAttempts: Number(data.submittedAttempts ?? 0), totalMembers: members.length, pendingMembers: [], endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
+    const attempts = await getDocs(query(collection(db!, 'quizAttempts'), where('quizId', '==', item.id)));
+    const answered = new Set(attempts.docs.map(attempt => String(attempt.data().userId)));
+    return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: true, submittedAttempts: answered.size, totalMembers: members.length, pendingMembers: members.filter(member => !answered.has(member.userId)), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
+  }));
+  return items.sort((a, b) => b.releaseAt - a.releaseAt);
+}
+
+export async function sendQuizReminder(quizId: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para enviar o lembrete.');
+  const quiz = await getDoc(doc(db, 'quizzes', quizId));
+  if (!quiz.exists() || !quiz.data().active || Number(quiz.data().releaseAt ?? 0) > Date.now() || Number(quiz.data().closesAt ?? 0) <= Date.now()) throw new Error('O lembrete só pode ser enviado enquanto o quiz estiver aberto.');
+  const [members, attempts] = await Promise.all([
+    getDocs(query(collection(db, 'classMembers'), where('classId', '==', quiz.data().classId), where('active', '==', true), limit(300))),
+    getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', quizId))),
+  ]);
+  const answered = new Set(attempts.docs.map(item => String(item.data().userId)));
+  const pending = members.docs.filter(item => item.data().role !== 'director' && !answered.has(String(item.data().userId)));
+  const batch = writeBatch(db);
+  pending.forEach(member => batch.set(doc(collection(db!, 'notifications')), { userId: member.data().userId, classId: quiz.data().classId, type: 'quiz', title: 'Quiz aguardando você', body: `${quiz.data().title ?? 'O quiz semanal'} ainda está aberto. Participe antes do encerramento!`, read: false, createdBy: auth!.currentUser!.uid, createdAt: serverTimestamp() }));
+  await batch.commit();
+  return { notified: pending.length };
 }
 
 export async function endQuizNow(quizId: string) {
