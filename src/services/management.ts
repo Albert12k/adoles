@@ -321,6 +321,33 @@ export async function publishLatestQuizRanking(selectedClassId?: string) {
   return { quizId: latest.id, entries: entries.length };
 }
 
+export interface AttendanceProgress { classId: string; week: number; quarter: number; year: number; total: number; approved: number; pending: number; rejected: number; missing: Array<{ userId: string; name: string }>; }
+const currentAttendancePeriod = () => { const now = new Date(); const quarter = Math.floor(now.getMonth() / 3) + 1; const start = new Date(now.getFullYear(), (quarter - 1) * 3, 1); return { week: Math.min(13, Math.floor((now.getTime() - start.getTime()) / (7 * 86400000)) + 1), quarter, year: now.getFullYear() }; };
+export async function getAttendanceProgress(selectedClassId?: string): Promise<AttendanceProgress> {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para acompanhar a presença.');
+  let classId = selectedClassId;
+  if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
+  if (!classId) throw new Error('Nenhuma base foi vinculada ao seu perfil.');
+  const period = currentAttendancePeriod();
+  const [membersSnapshot, recordsSnapshot] = await Promise.all([
+    getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true), limit(300))),
+    getDocs(query(collection(db, 'attendance'), where('classId', '==', classId), limit(300))),
+  ]);
+  const members = membersSnapshot.docs.filter(item => item.data().role !== 'director').map(item => ({ userId: String(item.data().userId), name: String(item.data().name ?? 'Adolescente') }));
+  const records = recordsSnapshot.docs.filter(item => item.data().week === period.week && item.data().quarter === period.quarter && item.data().year === period.year);
+  const submitted = new Set(records.map(item => String(item.data().userId)));
+  return { classId, ...period, total: members.length, approved: records.filter(item => item.data().status === 'approved').length, pending: records.filter(item => item.data().status === 'pending').length, rejected: records.filter(item => item.data().status === 'rejected').length, missing: members.filter(member => !submitted.has(member.userId)) };
+}
+
+export async function sendAttendanceReminder(selectedClassId?: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para enviar o lembrete.');
+  const progress = await getAttendanceProgress(selectedClassId);
+  const batch = writeBatch(db);
+  progress.missing.forEach(member => batch.set(doc(collection(db!, 'notifications')), { userId: member.userId, classId: progress.classId, type: 'presenca', title: 'Presença desta semana', body: `Envie sua foto da semana ${progress.week} para o diretor confirmar sua presença.`, read: false, createdBy: auth!.currentUser!.uid, createdAt: serverTimestamp() }));
+  await batch.commit();
+  return { notified: progress.missing.length };
+}
+
 export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string }) {
   if (input.action === 'regenerateCode') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
