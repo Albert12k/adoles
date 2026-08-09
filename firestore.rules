@@ -156,6 +156,17 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'checkedIn', 'checkedInBy', 'checkedInAt', 'promotedBy', 'promotedAt'])));
     }
 
+    match /eventFeedback/{feedbackId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
+        request.resource.data.districtId == profile().districtId &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        get(/databases/$(database)/documents/eventRsvps/$(request.resource.data.eventId + '_' + request.auth.uid)).data.status == 'confirmed';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || coordinatorOf(resource.data.districtId));
+      allow update: if signedIn() && resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId && request.resource.data.eventId == resource.data.eventId &&
+        request.resource.data.districtId == resource.data.districtId && request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+    }
+
     match /weeklyContent/{contentId} {
       allow read: if memberOf(resource.data.classId);
       allow create: if directorOf(request.resource.data.classId);

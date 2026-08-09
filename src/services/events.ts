@@ -4,6 +4,8 @@ import { auth, db } from '../config/firebase';
 export interface EventParticipant { userId: string; name: string; status: 'confirmed' | 'waitlisted' | 'cancelled'; checkedIn: boolean; waitlistOrder?: number; }
 export interface DistrictEvent { id: string; title: string; description?: string; location: string; districtId: string; dateLabel: string; capacity?: number; active: boolean; status?: 'scheduled' | 'cancelled' | 'completed'; participantCount?: number; waitlistCount?: number; checkedInCount?: number; participants?: EventParticipant[]; }
 export interface MyEventRegistration { eventId: string; status: 'confirmed' | 'waitlisted'; position?: number; checkedIn?: boolean; }
+export interface EventFeedback { id: string; eventId: string; userId: string; userName: string; districtId: string; rating: number; comment: string; }
+export interface CompletedEvent extends DistrictEvent { myCheckedIn: boolean; myRating?: number; myComment?: string; }
 
 export async function createDistrictEvent(input: { title: string; description?: string; location: string; dateLabel: string; capacity?: number }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para criar o encontro.');
@@ -20,6 +22,21 @@ export async function listDistrictEvents(districtId: string): Promise<DistrictEv
   if (!db || !districtId) return [];
   const result = await getDocs(query(collection(db, 'districtEvents'), where('districtId', '==', districtId), where('active', '==', true)));
   return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<DistrictEvent, 'id'>) }));
+}
+
+export async function listMyCompletedEvents(districtId: string): Promise<CompletedEvent[]> {
+  if (!db || !auth?.currentUser || !districtId) return [];
+  const [events, registrations, feedbacks] = await Promise.all([
+    getDocs(query(collection(db, 'districtEvents'), where('districtId', '==', districtId))),
+    getDocs(query(collection(db, 'eventRsvps'), where('userId', '==', auth.currentUser.uid))),
+    getDocs(query(collection(db, 'eventFeedback'), where('userId', '==', auth.currentUser.uid))),
+  ]);
+  const joined = registrations.docs.filter(item => item.data().status === 'confirmed').map(item => item.data());
+  return events.docs.map(item => ({ id: item.id, ...(item.data() as Omit<DistrictEvent, 'id'>) })).filter(event => event.status === 'completed' && joined.some(item => item.eventId === event.id)).map(event => {
+    const registration = joined.find(item => item.eventId === event.id);
+    const feedback = feedbacks.docs.find(item => item.data().eventId === event.id)?.data();
+    return { ...event, myCheckedIn: registration?.checkedIn === true, myRating: feedback?.rating, myComment: feedback?.comment };
+  });
 }
 
 export async function listCurrentDistrictEvents() {
@@ -119,4 +136,21 @@ export async function completeDistrictEvent(event: DistrictEvent) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para encerrar o encontro.');
   const participants = event.participants ?? [];
   await updateDoc(doc(db, 'districtEvents', event.id), { active: false, status: 'completed', finalConfirmed: participants.filter(item => item.status === 'confirmed').length, finalAttendance: participants.filter(item => item.checkedIn).length, completedBy: auth.currentUser.uid, completedAt: serverTimestamp() });
+}
+
+export async function submitEventFeedback(event: DistrictEvent, rating: number, comment: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar o encontro.');
+  const registration = await getDoc(doc(db, 'eventRsvps', `${event.id}_${auth.currentUser.uid}`));
+  if (!registration.exists() || registration.data().status !== 'confirmed') throw new Error('Somente participantes confirmados podem avaliar.');
+  const profile = await getDoc(doc(db, 'users', auth.currentUser.uid));
+  await setDoc(doc(db, 'eventFeedback', `${event.id}_${auth.currentUser.uid}`), { eventId: event.id, userId: auth.currentUser.uid, userName: profile.data()?.name ?? 'Adolescente', districtId: event.districtId, rating: Math.min(5, Math.max(1, Math.round(rating))), comment: comment.trim().slice(0, 500), updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function listDistrictEventFeedback(): Promise<EventFeedback[]> {
+  if (!db || !auth?.currentUser) return [];
+  const profile = await getDoc(doc(db, 'users', auth.currentUser.uid));
+  const districtId = String(profile.data()?.districtId ?? '');
+  if (!districtId) return [];
+  const result = await getDocs(query(collection(db, 'eventFeedback'), where('districtId', '==', districtId)));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<EventFeedback, 'id'>) }));
 }
