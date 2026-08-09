@@ -99,9 +99,11 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
   const dailyVerse = verseOfTheDay();
   const [homeQuiz, setHomeQuiz] = useState<{ releaseAt?: number | { toMillis?: () => number }; title?: string } | null>(null);
   const [nextEvent, setNextEvent] = useState<DistrictEvent | null>(null);
+  const [homeEventRegistrations, setHomeEventRegistrations] = useState<MyEventRegistration[]>([]);
   const [clock, setClock] = useState(Date.now());
   useEffect(() => { if (classId) getWeeklyQuiz(classId).then(item => setHomeQuiz(item as unknown as typeof homeQuiz)).catch(() => undefined); }, [classId]);
   useEffect(() => { if (districtId) listDistrictEvents(districtId).then(items => setNextEvent(items[0] ?? null)).catch(() => undefined); }, [districtId]);
+  useEffect(() => { listMyEventRegistrations().then(setHomeEventRegistrations).catch(() => undefined); }, []);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const releaseAt = typeof homeQuiz?.releaseAt === 'number' ? homeQuiz.releaseAt : homeQuiz?.releaseAt?.toMillis?.() ?? 0;
   const remaining = Math.max(0, releaseAt - clock);
@@ -109,6 +111,11 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
   const todayLabel = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date()).toUpperCase();
   const completedTasks = weekly.tasks.filter(item => item.done).length;
   const weeklyPercent = weekly.tasks.length ? Math.round(completedTasks / weekly.tasks.length * 100) : 0;
+  const nextTask = weekly.tasks.find(item => !item.done);
+  const today = new Date();
+  const currentQuarter = Math.floor(today.getMonth() / 3) + 1;
+  const currentQuarterStart = new Date(today.getFullYear(), (currentQuarter - 1) * 3, 1);
+  const currentPresenceWeek = Math.min(13, Math.floor((today.getTime() - currentQuarterStart.getTime()) / (7 * 86400000)) + 1);
   return (
     <>
       <View style={styles.hero}>
@@ -117,7 +124,7 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
             <Text style={styles.eyebrowLight}>{todayLabel}</Text>
             <Text style={styles.greeting}>Olá, {name}! 👋</Text>
           </View>
-          <View style={styles.avatar}><Text style={styles.avatarText}>D</Text></View>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{name[0]?.toUpperCase() ?? 'A'}</Text></View>
         </View>
         <Text style={styles.verse}>“{dailyVerse.text}”</Text>
         <Text style={styles.verseRef}>{dailyVerse.reference}</Text>
@@ -132,6 +139,12 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
           <Text style={styles.cardCaption}>Continue estudando para manter seu ritmo.</Text>
         </View>
         <Text style={styles.streakNumber}>{progress.streak}</Text>
+      </View>
+
+      <View style={styles.statsRow}>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.points}</Text><Text style={styles.cardCaption}>pontos reais</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.attendance}</Text><Text style={styles.cardCaption}>presenças</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.quizCorrect}</Text><Text style={styles.cardCaption}>acertos no quiz</Text></View>
       </View>
 
       <View style={styles.sectionHeader}>
@@ -150,6 +163,7 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Próximos passos</Text>
       </View>
+      {nextTask ? <Pressable style={styles.formCard} onPress={() => onNavigate(nextTask.tab)}><Pill tone="coral">RECOMENDADO AGORA</Pill><Text style={styles.manageTitle}>{nextTask.label}</Text><Text style={styles.manageCopy}>Continue sua semana e avance até +{nextTask.points} pontos.</Text><Text style={styles.raceLink}>Começar atividade ›</Text></Pressable> : weekly.tasks.length > 0 && <View style={styles.successNotice}><Text style={styles.manageTitle}>✓ Semana completa!</Text><Text style={styles.manageCopy}>Você concluiu todas as atividades disponíveis.</Text></View>}
       <View style={styles.quickGrid}>
         <Pressable style={[styles.quickCard, styles.quizCard]} onPress={() => onNavigate('Quiz')}>
           <Text style={styles.quickIcon}>?</Text>
@@ -160,11 +174,11 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
         <Pressable style={[styles.quickCard, styles.raceCard]} onPress={() => onNavigate('Presença')}>
           <Text style={styles.quickIcon}>⚑</Text>
           <Text style={styles.quickTitle}>Corrida</Text>
-          <Text style={styles.quickMeta}>Você está na semana 7</Text>
+          <Text style={styles.quickMeta}>Trimestre {currentQuarter} · semana {currentPresenceWeek}</Text>
           <Text style={styles.raceLink}>Ver trilha ›</Text>
         </Pressable>
       </View>
-      {nextEvent && <View style={styles.formCard}><Pill tone="gold">PRÓXIMO ENCONTRO</Pill><Text style={styles.manageTitle}>{nextEvent.title}</Text><Text style={styles.manageCopy}>{nextEvent.dateLabel} · {nextEvent.location}</Text></View>}
+      {nextEvent && <View style={styles.formCard}><Pill tone="gold">PRÓXIMO ENCONTRO</Pill><Text style={styles.manageTitle}>{nextEvent.title}</Text><Text style={styles.manageCopy}>{nextEvent.dateLabel} · {nextEvent.location}</Text>{homeEventRegistrations.find(item => item.eventId === nextEvent.id)?.status === 'confirmed' && <Text style={styles.challengeStatus}>✓ Sua participação está confirmada</Text>}{homeEventRegistrations.find(item => item.eventId === nextEvent.id)?.status === 'waitlisted' && <Text style={styles.challengeStatus}>⏳ Você está na lista de espera</Text>}</View>}
     </>
   );
 }
