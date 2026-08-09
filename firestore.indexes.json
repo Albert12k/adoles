@@ -18,6 +18,7 @@
     ,{ "collectionGroup": "studyRecords", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "feedbackVisible", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "attendance", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "districtEvents", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "quizAttempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

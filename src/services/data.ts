@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
-import { cloudFunctions, db, storage } from '../config/firebase';
+import { auth, cloudFunctions, db, storage } from '../config/firebase';
 import type { StudyRecord } from '../domain/models';
 import type { LeadershipReport, Quiz, QuizResult } from '../domain/models';
 
@@ -109,15 +109,27 @@ export async function reviewAttendance(recordId: string, reviewerId: string, app
 }
 
 export async function getWeeklyQuiz(classId: string) {
-  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
-  const loadQuiz = httpsCallable<{ classId: string }, Quiz | null>(cloudFunctions, 'getWeeklyQuiz');
-  return (await loadQuiz({ classId })).data;
+  const firestore = requireFirestore();
+  const result = await getDocs(query(collection(firestore, 'quizzes'), where('classId', '==', classId), where('active', '==', true), orderBy('releaseAt', 'desc'), limit(1)));
+  if (result.empty) return null;
+  return { id: result.docs[0].id, ...result.docs[0].data() } as unknown as Quiz;
 }
 
 export async function submitQuizAnswers(quizId: string, answers: number[]) {
-  if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
-  const submit = httpsCallable<{ quizId: string; answers: number[] }, QuizResult>(cloudFunctions, 'submitQuiz');
-  return (await submit({ quizId, answers })).data;
+  const firestore = requireFirestore();
+  if (!auth?.currentUser) throw new Error('Entre novamente para responder.');
+  const [quiz, profile] = await Promise.all([getDoc(doc(firestore, 'quizzes', quizId)), getDoc(doc(firestore, 'users', auth.currentUser.uid))]);
+  if (!quiz.exists()) throw new Error('Quiz não encontrado.');
+  const attemptRef = doc(firestore, 'quizAttempts', `${quizId}_${auth.currentUser.uid}`);
+  await setDoc(attemptRef, { quizId, classId: quiz.data().classId, userId: auth.currentUser.uid, userName: profile.data()?.name ?? 'Adolescente', answers, status: 'pending', createdAt: serverTimestamp() });
+  return { attemptId: attemptRef.id, correctAnswers: 0, totalQuestions: answers.length, points: 0 } as QuizResult;
+}
+
+export async function getMyQuizAttempt(quizId: string) {
+  const firestore = requireFirestore();
+  if (!auth?.currentUser) return null;
+  const snapshot = await getDoc(doc(firestore, 'quizAttempts', `${quizId}_${auth.currentUser.uid}`));
+  return snapshot.exists() ? snapshot.data() as { status?: string; score?: number; correct?: boolean } : null;
 }
 
 export async function getLeadershipReport(scope: { districtId?: string; classId?: string }) {

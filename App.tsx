@@ -15,7 +15,7 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance } from './src/services/data';
+import { getMyQuizAttempt, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
@@ -234,16 +234,23 @@ function AttendanceScreen({ classId, userName }: { classId: string; userName: st
   );
 }
 
-function QuizScreen() {
+function QuizScreen({ classId }: { classId: string }) {
   const [selected, setSelected] = useState<number | null>(null);
-  const options = ['Daniel', 'Josué', 'Moisés', 'Davi'];
+  const [quiz, setQuiz] = useState<{ id: string; title: string; questions: Array<{ prompt: string; options: string[] }> } | null>(null);
+  const [quizStatus, setQuizStatus] = useState('');
+  const [quizScore, setQuizScore] = useState<number | null>(null);
+  const [quizError, setQuizError] = useState('');
+  useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setQuizScore(attempt.score ?? null); } } }).catch(() => undefined); }, [classId]);
+  const question = quiz?.questions?.[0];
+  const options = question?.options ?? [];
+  const sendAnswer = async () => { if (!quiz || selected === null) return; setQuizError(''); try { await submitQuizAnswers(quiz.id, [selected]); setQuizStatus('pending'); } catch (error) { setQuizError(error instanceof Error ? error.message : 'Não foi possível enviar a resposta.'); } };
   return (
     <View style={styles.pagePad}>
       <View style={styles.quizHeader}>
         <Pill tone="coral">QUESTÃO 1 DE 5</Pill>
         <Text style={styles.quizPoints}>+10 pts</Text>
       </View>
-      <Text style={styles.pageTitle}>Quem recebeu de Deus a missão de conduzir o povo após Moisés?</Text>
+      <Text style={styles.pageTitle}>{question?.prompt ?? 'O diretor ainda não publicou o quiz semanal.'}</Text>
       <Text style={styles.pageIntro}>Escolha uma alternativa.</Text>
       {options.map((option, index) => (
         <Pressable key={option} style={[styles.option, selected === index && styles.optionSelected]} onPress={() => setSelected(index)}>
@@ -251,9 +258,10 @@ function QuizScreen() {
           <Text style={styles.optionText}>{option}</Text>
         </Pressable>
       ))}
-      <Pressable style={[styles.primaryButton, selected === null && styles.buttonDisabled]} disabled={selected === null}>
-        <Text style={styles.primaryButtonText}>Confirmar resposta</Text>
+      <Pressable style={[styles.primaryButton, (selected === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed') && styles.buttonDisabled]} disabled={selected === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed'} onPress={sendAnswer}>
+        <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? 'Aguardando correção do diretor' : quizStatus === 'reviewed' ? `Resultado: ${quizScore ?? 0} pontos` : 'Confirmar resposta'}</Text>
       </Pressable>
+      {quizError !== '' && <Text style={styles.authError}>{quizError}</Text>}
     </View>
   );
 }
@@ -346,7 +354,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
           {tab === 'Início' && <HomeScreen onNavigate={setTab} name={student.name} pending={student.pending} />}
           {tab === 'Estudo' && <StudyScreen classId={student.classId} userName={student.name} />}
           {tab === 'Presença' && <AttendanceScreen classId={student.classId} userName={student.name} />}
-          {tab === 'Quiz' && <QuizScreen />}
+          {tab === 'Quiz' && <QuizScreen classId={student.classId} />}
           {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} districtId={student.districtId} onExit={onExit} />}
         </ScrollView>
         <View style={styles.nav}>
@@ -603,7 +611,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const [districtEvents, setDistrictEvents] = useState<DistrictEvent[]>([]);
   const [structures, setStructures] = useState<StructureItem[]>([]);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
-  const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
+  const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir');
   const isContent = title.includes('Conteúdo');
   const isQuiz = title.includes('Quiz');
   const isReport = title.includes('Relatório');
@@ -613,7 +621,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isMembers = title.includes('membros');
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
-  const approvalType: ApprovalType | null = title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const approvalType: ApprovalType | null = title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
   const displayApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
@@ -743,6 +751,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const actions = role === 'diretor'
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
+      ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
       ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],

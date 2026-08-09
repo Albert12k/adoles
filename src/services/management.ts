@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -30,11 +30,35 @@ export async function publishQuizContent(input: {
   closesAt: number;
   questions: Array<{ prompt: string; options: string[]; correctIndex: number }>;
 }) {
-  const callable = httpsCallable<typeof input, { quizId: string }>(requireFunctions(), 'publishQuiz');
-  return (await callable(input)).data;
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar o quiz.');
+  let classId = input.classId;
+  if (!classId) {
+    const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+    classId = directed.docs[0]?.id;
+  }
+  if (!classId) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
+  const quizRef = doc(collection(db, 'quizzes'));
+  const batch = writeBatch(db);
+  batch.set(quizRef, { classId, title: input.title, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ prompt, options }) => ({ prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
+  batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, correctIndexes: input.questions.map(item => item.correctIndex), createdBy: auth.currentUser.uid });
+  await batch.commit();
+  return { quizId: quizRef.id };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord', itemId: string, approved: boolean) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt', itemId: string, approved: boolean) {
+  if (type === 'quizAttempt') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para corrigir o quiz.');
+    await runTransaction(db, async transaction => {
+      const attemptRef = doc(db!, 'quizAttempts', itemId);
+      const attempt = await transaction.get(attemptRef);
+      if (!attempt.exists()) throw new Error('Resposta não encontrada.');
+      const key = await transaction.get(doc(db!, 'quizAnswerKeys', attempt.data().quizId));
+      if (!key.exists()) throw new Error('Gabarito não encontrado.');
+      const correct = approved && attempt.data().answers?.[0] === key.data().correctIndexes?.[0];
+      transaction.update(attemptRef, { status: 'reviewed', score: correct ? 10 : 0, correct, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+    });
+    return { status: 'reviewed' };
+  }
   if (type === 'attendance') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar a presença.');
     await runTransaction(db, async transaction => {

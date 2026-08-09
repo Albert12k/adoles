@@ -161,14 +161,23 @@ service cloud.firestore {
     }
 
     match /quizzes/{quizId} {
-      allow read: if directorOf(resource.data.classId) || admin();
+      allow read: if memberOf(resource.data.classId) || directorOf(resource.data.classId) || admin();
       allow create: if directorOf(request.resource.data.classId) || admin();
       allow update, delete: if directorOf(resource.data.classId) || admin();
+    }
+
+    match /quizAnswerKeys/{quizId} {
+      allow read: if directorOf(resource.data.classId) || admin();
+      allow create, update: if directorOf(request.resource.data.classId) || admin();
     }
 
     match /quizAttempts/{attemptId} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         directorOf(resource.data.classId) || admin());
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
+        memberOf(request.resource.data.classId) && request.resource.data.status == 'pending';
+      allow update: if directorOf(resource.data.classId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'score', 'correct', 'reviewedBy', 'reviewedAt']);
     }
 
     match /muralPosts/{postId} {
