@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, where, writeBatch } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -72,24 +72,30 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
-export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; }
+export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; submittedAttempts: number; endedAt?: Date; }
 export async function listManagedQuizzes(selectedClassId?: string): Promise<ManagedQuiz[]> {
   if (!db || !auth?.currentUser) return [];
   let classId = selectedClassId;
   if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
   if (!classId) return [];
-  const result = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
-  return result.docs.map(item => ({ id: item.id, title: item.data().title ?? 'Quiz semanal', releaseAt: Number(item.data().releaseAt ?? 0), closesAt: Number(item.data().closesAt ?? 0), active: item.data().active === true })).sort((a, b) => b.releaseAt - a.releaseAt);
+  const result = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), limit(30)));
+  return result.docs.map(item => ({ id: item.id, title: item.data().title ?? 'Quiz semanal', releaseAt: Number(item.data().releaseAt ?? 0), closesAt: Number(item.data().closesAt ?? 0), active: item.data().active === true, submittedAttempts: Number(item.data().submittedAttempts ?? 0), endedAt: item.data().endedAt?.toDate?.() })).sort((a, b) => b.releaseAt - a.releaseAt);
 }
 
 export async function endQuizNow(quizId: string) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para encerrar o quiz.');
+  let classId = ''; let title = 'Quiz semanal';
   await runTransaction(db, async transaction => {
     const quizRef = doc(db!, 'quizzes', quizId); const quiz = await transaction.get(quizRef);
     if (!quiz.exists() || !quiz.data().active) throw new Error('Este quiz já foi encerrado.');
+    classId = String(quiz.data().classId ?? ''); title = String(quiz.data().title ?? title);
     transaction.update(quizRef, { active: false, closesAt: Date.now(), endedBy: auth!.currentUser!.uid, endedAt: serverTimestamp() });
   });
-  return { success: true };
+  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', quizId)));
+  const reviewed = attempts.docs.filter(item => item.data().status === 'reviewed').length;
+  await updateDoc(doc(db, 'quizzes', quizId), { submittedAttempts: attempts.size, reviewedAttempts: reviewed });
+  if (classId) await notifyClass(classId, 'quiz', 'Quiz encerrado', `${title} foi encerrado pelo diretor com ${attempts.size} resposta(s) recebida(s).`).catch(() => undefined);
+  return { success: true, submittedAttempts: attempts.size, reviewedAttempts: reviewed };
 }
 
 export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean) {
