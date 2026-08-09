@@ -41,9 +41,10 @@ export async function closeCurrentPeriod(kind: PeriodKind, selectedClassId?: str
     const userActivities = activityParticipants.docs.filter(item => item.data().userId === userId && item.data().status === 'confirmed' && inPeriod(item.data().confirmedAt));
     const correctQuizAnswers = userAttempts.reduce((total, item) => total + Number(item.data().correctAnswers ?? 0), 0);
     const summaries = userStudies.length;
+    const studyPoints = userStudies.reduce((total, item) => total + Number(item.data().score ?? 0), 0);
     const presence = userAttendance.length;
     const activityPoints = userActivities.reduce((total, item) => total + Number(item.data().points ?? 0), 0);
-    return { userId, name: member.data().name ?? 'Adolescente', summaries, activities: userActivities.length, correctQuizAnswers, attendance: presence, points: summaries * 20 + presence * 10 + correctQuizAnswers * 10 + activityPoints, position: 0 };
+    return { userId, name: member.data().name ?? 'Adolescente', summaries, activities: userActivities.length, correctQuizAnswers, attendance: presence, points: studyPoints + presence * 10 + correctQuizAnswers * 10 + activityPoints, position: 0 };
   }).sort((a, b) => b.points - a.points);
   let previousPoints: number | null = null;
   let position = 0;

@@ -430,6 +430,7 @@ function ProfileScreen({ name, className, classId, districtId, ageGroup, initial
         <View style={styles.stat}><Text style={styles.statValue}>{progress.summaries}</Text><Text style={styles.cardCaption}>resumos</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>{progress.streak}</Text><Text style={styles.cardCaption}>semanas seguidas</Text></View>
       </View>
+      <View style={styles.formCard}><Text style={styles.sectionTitle}>Minha jornada de estudos</Text><View style={styles.reportMiniGrid}><Text style={styles.reportMiniItem}>📖 {progress.lessonStudies} lições aprovadas</Text><Text style={styles.reportMiniItem}>✦ {progress.bibleStudies} leituras bíblicas</Text><Text style={styles.reportMiniItem}>▣ {progress.bookStudies} leituras de livro</Text><Text style={styles.reportMiniItem}>⭐ {progress.lessonStudies + progress.bibleStudies + progress.bookStudies} estudos pontuados</Text></View></View>
       <Text style={styles.sectionTitle}>Comunidade</Text>
       <View style={styles.communityGrid}>
         {[
