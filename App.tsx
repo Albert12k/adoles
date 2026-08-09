@@ -42,6 +42,7 @@ import { cancelDistrictEvent, cancelEventAttendance, completeDistrictEvent, conf
 import { closeCurrentPeriod, exportPeriodClosure, listPeriodClosures, type PeriodClosure, type PeriodKind } from './src/services/periods';
 import { listLeadershipActivity, type ActivityCategory, type LeadershipActivity } from './src/services/activityFeed';
 import { getLeadershipSettings, saveLeadershipSettings, type LeadershipSettings } from './src/services/settings';
+import { loadDashboardInsights, type DashboardInsights } from './src/services/dashboard';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -1018,6 +1019,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const [leadershipSettings, setLeadershipSettings] = useState<LeadershipSettings | null>(null);
   const [settingsNotice, setSettingsNotice] = useState('');
   const [settingsError, setSettingsError] = useState('');
+  const [dashboardInsights, setDashboardInsights] = useState<DashboardInsights>({ pending: 0, recent: 0, alert: 'Atualizando o painel...', weeklyValues: Array(7).fill(0), weeklyLabels: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'], trend: 0 });
   const leadership = useLeadershipProfile(role);
   const [activeClassId, setActiveClassId] = useState('');
   useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
@@ -1025,9 +1027,11 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
   useEffect(() => { if (section === 'atividade') refreshActivity(); }, [section, role, activeClassId]);
   useEffect(() => { if (section === 'perfil' && profilePanel === 'settings' && !leadershipSettings) getLeadershipSettings().then(setLeadershipSettings).catch(error => setSettingsError(error instanceof Error ? error.message : 'Não foi possível abrir as configurações.')); }, [section, profilePanel, leadershipSettings]);
+  useEffect(() => { loadDashboardInsights(role, activeClassId).then(setDashboardInsights).catch(() => undefined); }, [role, activeClassId]);
   const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
   const scope = role === 'diretor' && activeManagedClass ? activeManagedClass.name : leadership.scope;
-  const metrics = leadership.metrics.map((item, index) => [item[0], item[1], [colors.tealMedium, colors.gold, colors.coral][index]]);
+  const metrics = leadership.metrics.map((item, index) => [index === 1 ? String(dashboardInsights.pending) : index === 2 ? String(dashboardInsights.recent) : item[0], index === 1 ? 'pendências' : index === 2 ? 'ações em 7 dias' : item[1], [colors.tealMedium, colors.gold, colors.coral][index]]);
+  const maxWeeklyActivity = Math.max(1, ...dashboardInsights.weeklyValues);
   const performSignOut = async () => { setSigningOut(true); try { await onExit(); } finally { setSigningOut(false); } };
   const relativeActivityTime = (date: Date) => { const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000)); if (minutes < 1) return 'agora'; if (minutes < 60) return `há ${minutes} min`; const hours = Math.floor(minutes / 60); if (hours < 24) return `há ${hours}h`; const days = Math.floor(hours / 24); return days === 1 ? 'ontem' : `há ${days} dias`; };
   const actions = role === 'diretor'
@@ -1078,9 +1082,9 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
           {section === 'painel' && <>
             <Text style={styles.sectionTitle}>Visão de hoje</Text>
             <View style={styles.metricsGrid}>{metrics.map(([value, label, accent]) => <MetricCard key={label} value={value} label={label} accent={accent} />)}</View>
-            <View style={styles.alertCard}><View style={styles.alertDot} /><View style={styles.flex}><Text style={styles.alertTitle}>Atenção necessária</Text><Text style={styles.alertCopy}>{role === 'diretor' ? '2 adolescentes estão há duas semanas sem presença.' : role === 'coordenador' ? '3 solicitações de diretor aguardam sua aprovação.' : 'O Distrito Norte ainda não possui coordenador.'}</Text></View></View>
+            <View style={styles.alertCard}><View style={styles.alertDot} /><View style={styles.flex}><Text style={styles.alertTitle}>{dashboardInsights.pending ? 'Atenção necessária' : 'Tudo em dia'}</Text><Text style={styles.alertCopy}>{dashboardInsights.alert}</Text></View></View>
             <View style={styles.sectionHeaderManagement}><Text style={styles.sectionTitle}>Desempenho</Text><Text style={styles.seeAll}>Ver relatório ›</Text></View>
-            <View style={styles.performanceCard}><View style={styles.performanceTop}><Text style={styles.weekTitle}>Engajamento no trimestre</Text><Text style={styles.performanceUp}>↑ 12%</Text></View><View style={styles.barChart}>{[42, 58, 51, 72, 66, 81, 86].map((height, index) => <View key={index} style={[styles.chartBar, { height }, index === 6 && styles.chartBarActive]} />)}</View><View style={styles.chartLabels}>{['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'].map(label => <Text key={label} style={styles.chartLabel}>{label}</Text>)}</View></View>
+            <View style={styles.performanceCard}><View style={styles.performanceTop}><Text style={styles.weekTitle}>Atividade nas últimas 7 semanas</Text><Text style={[styles.performanceUp, dashboardInsights.trend < 0 && { color: colors.coral }]}>{dashboardInsights.trend >= 0 ? '↑' : '↓'} {Math.abs(dashboardInsights.trend)}%</Text></View><View style={styles.barChart}>{dashboardInsights.weeklyValues.map((value, index) => <View key={index} style={[styles.chartBar, { height: value ? Math.max(12, Math.round(value / maxWeeklyActivity * 100)) : 4 }, index === 6 && styles.chartBarActive]} />)}</View><View style={styles.chartLabels}>{dashboardInsights.weeklyLabels.map(label => <Text key={label} style={styles.chartLabel}>{label}</Text>)}</View></View>
           </>}
           {role === 'diretor' && leadership.managedClasses.length > 0 && <View style={styles.classSwitcher}><Text style={styles.authLabel}>BASE ATIVA</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{leadership.managedClasses.map(item => <Pressable key={item.id} onPress={() => { setActiveClassId(item.id); setSelectedAction(null); }} style={[styles.classSwitchButton, activeClassId === item.id && styles.classSwitchButtonActive]}><Text style={[styles.classSwitchName, activeClassId === item.id && styles.classSwitchNameActive]}>{item.name}</Text><Text style={styles.classSwitchGroup}>{item.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></Pressable>)}</ScrollView></View>}
           {section === 'gestao' && (selectedAction ? <ManagementDetail title={selectedAction} role={role} selectedClassId={activeClassId} onBack={() => setSelectedAction(null)} /> : <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} onPress={() => setSelectedAction(title)} />)}{role === 'diretor' && <ActionRow icon="♙" title="Gerenciar membros" copy="Convite, lista, transferências e acessos" onPress={() => setSelectedAction('Gerenciar membros')} />}</>)}
