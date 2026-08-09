@@ -7,6 +7,13 @@ const requireFunctions = () => {
   return cloudFunctions;
 };
 
+const quizWeek = (timestamp = Date.now()) => {
+  const date = new Date(timestamp);
+  const start = new Date(date.getFullYear(), 0, 1);
+  const week = Math.ceil(((date.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+  return { weekKey: `${date.getFullYear()}-W${String(week).padStart(2, '0')}`, weekLabel: `Semana ${week} · ${date.getFullYear()}` };
+};
+
 export async function publishContent(input: { title: string; classId?: string; lessonPdfUrl?: string; bookPdfUrl?: string; week?: number; quarter?: number; year?: number }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar.');
   let classId = input.classId;
@@ -38,8 +45,9 @@ export async function publishQuizContent(input: {
   }
   if (!classId) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
   const quizRef = doc(collection(db, 'quizzes'));
+  const week = quizWeek(input.releaseAt);
   const batch = writeBatch(db);
-  batch.set(quizRef, { classId, title: input.title, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ type, prompt, options }) => ({ type, prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
+  batch.set(quizRef, { classId, title: input.title, ...week, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ type, prompt, options }) => ({ type, prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
   batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, answers: input.questions.map(item => item.correctAnswer), types: input.questions.map(item => item.type), createdBy: auth.currentUser.uid });
   await batch.commit();
   return { quizId: quizRef.id };
@@ -124,10 +132,13 @@ export async function publishLatestQuizRanking() {
   if (!latest) throw new Error('Nenhum quiz ativo foi encontrado.');
   const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', latest.id), where('status', '==', 'reviewed')));
   if (attempts.empty) throw new Error('Ainda não há respostas corrigidas para publicar.');
-  const entries = attempts.docs.map(item => ({ userId: item.data().userId, name: item.data().userName ?? 'Adolescente', score: Number(item.data().score ?? 0) })).sort((a, b) => b.score - a.score);
+  const sorted = attempts.docs.map(item => ({ userId: item.data().userId, name: item.data().userName ?? 'Adolescente', score: Number(item.data().score ?? 0) })).sort((a, b) => b.score - a.score);
+  let lastScore: number | null = null;
+  let lastPosition = 0;
+  const entries = sorted.map((entry, index) => { if (entry.score !== lastScore) lastPosition = index + 1; lastScore = entry.score; return { ...entry, position: lastPosition }; });
   const batch = writeBatch(db);
   attempts.docs.forEach(item => batch.update(item.ref, { resultPublished: true, publishedAt: serverTimestamp() }));
-  batch.set(doc(db, 'quizRankings', latest.id), { quizId: latest.id, classId, title: latest.data().title, entries, published: true, publishedBy: auth.currentUser.uid, publishedAt: serverTimestamp() });
+  batch.set(doc(db, 'quizRankings', latest.id), { quizId: latest.id, classId, title: latest.data().title, weekKey: latest.data().weekKey ?? quizWeek(latest.data().releaseAt).weekKey, weekLabel: latest.data().weekLabel ?? quizWeek(latest.data().releaseAt).weekLabel, entries, published: true, publishedBy: auth.currentUser.uid, publishedAt: serverTimestamp() });
   await batch.commit();
   return { quizId: latest.id, entries: entries.length };
 }

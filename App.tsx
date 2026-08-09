@@ -15,7 +15,7 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
+import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
@@ -249,11 +249,12 @@ function QuizScreen({ classId }: { classId: string }) {
   const [quizStatus, setQuizStatus] = useState('');
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [resultPublished, setResultPublished] = useState(false);
-  const [quizRanking, setQuizRanking] = useState<Array<{ userId: string; name: string; score: number }>>([]);
+  const [quizRanking, setQuizRanking] = useState<Array<{ userId: string; name: string; score: number; position: number }>>([]);
+  const [rankingWeek, setRankingWeek] = useState('Ranking da semana');
   const [quizError, setQuizError] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Array<number | string | null>>([]);
-  useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setResultPublished(attempt.resultPublished === true); setQuizScore(attempt.resultPublished ? attempt.score ?? null : null); if (attempt.resultPublished) { const ranking = await getQuizRanking(current.id); setQuizRanking(ranking?.entries ?? []); } } } }).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setResultPublished(attempt.resultPublished === true); setQuizScore(attempt.resultPublished ? attempt.score ?? null : null); if (attempt.resultPublished) { const ranking = await getQuizRanking(current.id); setQuizRanking(ranking?.entries ?? []); setRankingWeek(ranking?.weekLabel ?? 'Ranking da semana'); } } } }).catch(() => undefined); }, [classId]);
   const question = quiz?.questions?.[currentIndex];
   const options = question?.options ?? [];
   const answer = answers[currentIndex] ?? null;
@@ -285,18 +286,20 @@ function QuizScreen({ classId }: { classId: string }) {
       <Pressable style={[styles.primaryButton, (answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed') && styles.buttonDisabled]} disabled={answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed'} onPress={advance}>
         <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? '⏳ Aguardando correção' : quizStatus === 'reviewed' && !resultPublished ? '🔒 Nota corrigida · aguardando publicação' : quizStatus === 'reviewed' ? `🏆 Resultado: ${quizScore ?? 0} pontos` : currentIndex === (quiz?.questions.length ?? 1) - 1 ? '🚀 Finalizar jornada' : 'Próxima fase →'}</Text>
       </Pressable>
-      {resultPublished && quizRanking.length > 0 && <View style={styles.formCard}><Text style={styles.sectionTitle}>🏆 Ranking da semana</Text>{quizRanking.map((entry, index) => <View key={entry.userId} style={styles.rankRow}><Text style={styles.rankPlace}>{index + 1}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{entry.name[0]}</Text></View><Text style={styles.rankName}>{entry.name}</Text><Text style={styles.rankPoints}>{entry.score} pts</Text></View>)}</View>}
+      {resultPublished && quizRanking.length > 0 && <View style={styles.formCard}><Text style={styles.sectionTitle}>🏆 {rankingWeek}</Text>{quizRanking.map(entry => <View key={entry.userId} style={styles.rankRow}><Text style={styles.rankPlace}>{entry.position}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{entry.name[0]}</Text></View><Text style={styles.rankName}>{entry.name}</Text><Text style={styles.rankPoints}>{entry.score} pts</Text></View>)}</View>}
       {currentIndex > 0 && quizStatus === '' && <Pressable onPress={() => setCurrentIndex(index => index - 1)}><Text style={styles.skipLink}>← Voltar uma fase</Text></Pressable>}
       {quizError !== '' && <Text style={styles.authError}>{quizError}</Text>}
     </View>
   );
 }
 
-function ProfileScreen({ name, className, districtId, onExit }: { name: string; className: string; districtId: string; onExit: () => Promise<void> }) {
+function ProfileScreen({ name, className, classId, districtId, onExit }: { name: string; className: string; classId: string; districtId: string; onExit: () => Promise<void> }) {
   const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes' | 'eventos'>('hub');
   const [events, setEvents] = useState<DistrictEvent[]>([]);
   const [confirmedEvents, setConfirmedEvents] = useState<string[]>([]);
+  const [rankingHistory, setRankingHistory] = useState<Array<{ id: string; weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> }>>([]);
   useEffect(() => { if (districtId) listDistrictEvents(districtId).then(setEvents).catch(() => undefined); }, [districtId]);
+  useEffect(() => { if (classId) listQuizRankingHistory(classId).then(setRankingHistory).catch(() => undefined); }, [classId]);
   const live = useLiveDashboard();
   if (communityView !== 'hub') {
     const content = {
@@ -314,7 +317,7 @@ function ProfileScreen({ name, className, districtId, onExit }: { name: string; 
         <Text style={styles.pageEyebrow}>{content.eyebrow}</Text><Text style={styles.pageTitle}>{content.title}</Text><Text style={styles.pageIntro}>{content.copy}</Text>
         {communityView === 'ranking' && <>
           <View style={styles.rankingTabs}><Text style={styles.rankingTabActive}>Classe</Text><Text style={styles.rankingTab}>Distrito</Text><Text style={styles.rankingTab}>Turmas</Text></View>
-          {(live.rankings.length > 0 ? live.rankings.map((item, index) => [String(index + 1), item.className, String(item.normalizedScore)]) : [['1', 'Marina Costa', '510'], ['2', 'João Pedro', '465'], ['3', 'Daniel Oliveira', '420'], ['4', 'Sara Lima', '398'], ['5', 'Lucas Rocha', '372']]).map(([place, name, points]) => <View key={`${place}_${name}`} style={[styles.rankRow, place === '3' && styles.rankRowCurrent]}><Text style={styles.rankPlace}>{place}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><Text style={styles.rankName}>{name}</Text><Text style={styles.rankPoints}>{points} pts</Text></View>)}
+          {rankingHistory.length > 0 ? rankingHistory.map(week => <View key={week.id} style={styles.formCard}><Text style={styles.sectionTitle}>{week.weekLabel ?? 'Semana'}</Text>{week.entries?.map(entry => <View key={entry.userId} style={styles.rankRow}><Text style={styles.rankPlace}>{entry.position}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{entry.name[0]}</Text></View><Text style={styles.rankName}>{entry.name}</Text><Text style={styles.rankPoints}>{entry.score} pts</Text></View>)}</View>) : (live.rankings.length > 0 ? live.rankings.map((item, index) => [String(index + 1), item.className, String(item.normalizedScore)]) : [['1', 'Ranking ainda não publicado', '0']]).map(([place, rankingName, points]) => <View key={`${place}_${rankingName}`} style={styles.rankRow}><Text style={styles.rankPlace}>{place}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{rankingName[0]}</Text></View><Text style={styles.rankName}>{rankingName}</Text><Text style={styles.rankPoints}>{points} pts</Text></View>)}
         </>}
         {communityView === 'mural' && <>
           {[['🏆', 'Marina conquistou “Leitora do mês”', 'Há 2 horas · 12 reações'], ['🔥', 'João completou 6 semanas seguidas', 'Ontem · 8 reações'], ['◆', 'Desafio solidário aprovado!', 'A Base Geração ganhou +100 pontos']].map(([icon, title, copy]) => <View key={title} style={styles.feedCard}><Text style={styles.feedEmoji}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text><Text style={styles.reactions}>♥  🙌  ⚡</Text></View></View>)}
@@ -381,7 +384,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
           {tab === 'Estudo' && <StudyScreen classId={student.classId} userName={student.name} />}
           {tab === 'Presença' && <AttendanceScreen classId={student.classId} userName={student.name} />}
           {tab === 'Quiz' && <QuizScreen classId={student.classId} />}
-          {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} districtId={student.districtId} onExit={onExit} />}
+          {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} classId={student.classId} districtId={student.districtId} onExit={onExit} />}
         </ScrollView>
         <View style={styles.nav}>
           {tabs.map((item) => {

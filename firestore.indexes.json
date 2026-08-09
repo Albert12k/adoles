@@ -20,6 +20,7 @@
     ,{ "collectionGroup": "districtEvents", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "quizAttempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "quizAttempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "quizId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "quizRankings", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "published", "order": "ASCENDING" }, { "fieldPath": "publishedAt", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }

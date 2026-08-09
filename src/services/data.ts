@@ -135,7 +135,13 @@ export async function getMyQuizAttempt(quizId: string) {
 export async function getQuizRanking(quizId: string) {
   const firestore = requireFirestore();
   const snapshot = await getDoc(doc(firestore, 'quizRankings', quizId));
-  return snapshot.exists() ? snapshot.data() as { published?: boolean; entries?: Array<{ userId: string; name: string; score: number }> } : null;
+  return snapshot.exists() ? snapshot.data() as { published?: boolean; weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> } : null;
+}
+
+export async function listQuizRankingHistory(classId: string) {
+  const firestore = requireFirestore();
+  const result = await getDocs(query(collection(firestore, 'quizRankings'), where('classId', '==', classId), where('published', '==', true), orderBy('publishedAt', 'desc'), limit(13)));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> }) }));
 }
 
 export async function getLeadershipReport(scope: { districtId?: string; classId?: string }) {
