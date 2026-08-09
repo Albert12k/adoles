@@ -16,7 +16,7 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == userId &&
         request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
       allow update: if admin() || (request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status', 'themeColor'])) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status', 'themeColor', 'notificationPreferences', 'quietHours', 'settingsUpdatedAt'])) ||
         (roleIs('coordinator') && resource.data.districtId == profile().districtId &&
           ((resource.data.role == 'student' && request.resource.data.role == 'director') ||
            (resource.data.role == 'director' && request.resource.data.role == 'student')) &&
