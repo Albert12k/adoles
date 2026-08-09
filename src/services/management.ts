@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, increment, limit, onSnapshot, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -72,7 +72,7 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
-export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; submittedAttempts: number; totalMembers: number; pendingMembers: Array<{ userId: string; name: string }>; endedAt?: Date; }
+export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; submittedAttempts: number; totalMembers: number; pendingMembers: Array<{ userId: string; name: string }>; reminderCount: number; lastReminderAt?: Date; endedAt?: Date; }
 export async function listManagedQuizzes(selectedClassId?: string): Promise<ManagedQuiz[]> {
   if (!db || !auth?.currentUser) return [];
   let classId = selectedClassId;
@@ -85,18 +85,27 @@ export async function listManagedQuizzes(selectedClassId?: string): Promise<Mana
   const members = membersSnapshot.docs.filter(item => item.data().role !== 'director').map(item => ({ userId: String(item.data().userId), name: String(item.data().name ?? 'Adolescente') }));
   const items = await Promise.all(result.docs.map(async item => {
     const data = item.data(); const isActive = data.active === true && Number(data.closesAt ?? 0) > Date.now();
-    if (!isActive) return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: false, submittedAttempts: Number(data.submittedAttempts ?? 0), totalMembers: members.length, pendingMembers: [], endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
+    if (!isActive) return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: false, submittedAttempts: Number(data.submittedAttempts ?? 0), totalMembers: members.length, pendingMembers: [], reminderCount: Number(data.reminderCount ?? 0), lastReminderAt: data.lastReminderAt?.toDate?.(), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
     const attempts = await getDocs(query(collection(db!, 'quizAttempts'), where('quizId', '==', item.id)));
     const answered = new Set(attempts.docs.map(attempt => String(attempt.data().userId)));
-    return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: true, submittedAttempts: answered.size, totalMembers: members.length, pendingMembers: members.filter(member => !answered.has(member.userId)), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
+    return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: true, submittedAttempts: answered.size, totalMembers: members.length, pendingMembers: members.filter(member => !answered.has(member.userId)), reminderCount: Number(data.reminderCount ?? 0), lastReminderAt: data.lastReminderAt?.toDate?.(), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
   }));
   return items.sort((a, b) => b.releaseAt - a.releaseAt);
+}
+
+export function subscribeQuizParticipation(classId: string, callback: () => void) {
+  if (!db || !classId) return () => undefined;
+  const unsubscribeAttempts = onSnapshot(query(collection(db, 'quizAttempts'), where('classId', '==', classId), limit(300)), callback);
+  const unsubscribeQuizzes = onSnapshot(query(collection(db, 'quizzes'), where('classId', '==', classId), limit(30)), callback);
+  return () => { unsubscribeAttempts(); unsubscribeQuizzes(); };
 }
 
 export async function sendQuizReminder(quizId: string) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para enviar o lembrete.');
   const quiz = await getDoc(doc(db, 'quizzes', quizId));
   if (!quiz.exists() || !quiz.data().active || Number(quiz.data().releaseAt ?? 0) > Date.now() || Number(quiz.data().closesAt ?? 0) <= Date.now()) throw new Error('O lembrete só pode ser enviado enquanto o quiz estiver aberto.');
+  const lastReminderAt = quiz.data().lastReminderAt?.toMillis?.() ?? 0;
+  if (Date.now() - lastReminderAt < 60 * 60 * 1000) throw new Error('Aguarde uma hora antes de enviar outro lembrete deste quiz.');
   const [members, attempts] = await Promise.all([
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', quiz.data().classId), where('active', '==', true), limit(300))),
     getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', quizId))),
@@ -106,6 +115,7 @@ export async function sendQuizReminder(quizId: string) {
   const batch = writeBatch(db);
   pending.forEach(member => batch.set(doc(collection(db!, 'notifications')), { userId: member.data().userId, classId: quiz.data().classId, type: 'quiz', title: 'Quiz aguardando você', body: `${quiz.data().title ?? 'O quiz semanal'} ainda está aberto. Participe antes do encerramento!`, read: false, createdBy: auth!.currentUser!.uid, createdAt: serverTimestamp() }));
   await batch.commit();
+  await updateDoc(doc(db, 'quizzes', quizId), { lastReminderAt: serverTimestamp(), reminderCount: increment(1) });
   return { notified: pending.length };
 }
 
