@@ -28,16 +28,25 @@ export async function selectAndUploadContentPdf() {
   return { name: asset.name, url: await getDownloadURL(snapshot.ref) };
 }
 
-export async function selectAndSubmitAttendancePhoto(week: number, quarter: number, year: number) {
+export async function selectAttendancePhoto() {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) throw new Error('Permita o acesso às fotos para enviar a presença.');
   const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [4, 3] });
   if (selection.canceled) return null;
+  return selection.assets[0].uri;
+}
+
+export async function uploadSelectedAttendancePhoto(localUri: string, week: number, quarter: number, year: number, userName?: string) {
   const scope = await currentScope();
-  const evidenceUrl = await uploadAttendanceEvidence(scope.user.uid, scope.classId, selection.assets[0].uri);
+  const evidenceUrl = await uploadAttendanceEvidence(scope.user.uid, scope.classId, localUri);
   const result = await submitAttendance({
     userId: scope.user.uid, classId: scope.classId, week, quarter, year, evidenceUrl,
-    districtId: scope.classData?.districtId ?? '', ageGroup: scope.classData?.ageGroup ?? 'adolescentes',
+    userName, districtId: scope.classData?.districtId ?? '', ageGroup: scope.classData?.ageGroup ?? 'adolescentes',
   });
   return result.id;
+}
+
+export async function selectAndSubmitAttendancePhoto(week: number, quarter: number, year: number) {
+  const localUri = await selectAttendancePhoto();
+  return localUri ? uploadSelectedAttendancePhoto(localUri, week, quarter, year) : null;
 }

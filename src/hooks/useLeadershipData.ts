@@ -4,7 +4,7 @@ import { auth, db, firebaseEnabled } from '../config/firebase';
 import { getManagedClass } from '../services/management';
 
 export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer';
-export interface ApprovalItem { id: string; name: string; copy: string; }
+export interface ApprovalItem { id: string; name: string; copy: string; evidenceUrl?: string; }
 export interface ClassMember { id: string; name: string; role: string; }
 export interface LeadershipHistoryItem { id: string; className: string; action: 'transfer' | 'revoke'; targetName: string; status: string; reviewedAt?: Date; }
 
@@ -40,7 +40,7 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
       }
       unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.map(item => {
         const data = item.data();
-        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? `${data.source === 'bible' ? `Bíblia${data.passage ? ` · ${data.passage}` : ''}` : data.source === 'book' ? 'Livro' : 'Lição'} — ${String(data.summary ?? 'Resumo enviado')}` : type === 'attendance' ? `Semana ${data.week} · aguardando presença` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
+        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', evidenceUrl: type === 'attendance' ? data.evidenceUrl : undefined, copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? `${data.source === 'bible' ? `Bíblia${data.passage ? ` · ${data.passage}` : ''}` : data.source === 'book' ? 'Livro' : 'Lição'} — ${String(data.summary ?? 'Resumo enviado')}` : type === 'attendance' ? `Semana ${data.week} · foto enviada para validação` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
       })));
     })();
     return () => { active = false; unsubscribe(); };
