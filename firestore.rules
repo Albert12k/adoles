@@ -11,11 +11,12 @@ service cloud.firestore {
     function memberOf(classId) { return signedIn() && classId in profile().classIds; }
 
     match /users/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow read: if signedIn() && (request.auth.uid == userId || admin() ||
+        (resource.data.role == 'student' && resource.data.classIds.hasAny(profile().classIds)));
       allow create: if signedIn() && request.auth.uid == userId &&
         request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
       allow update: if admin() || (request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status'])) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status', 'themeColor'])) ||
         (roleIs('coordinator') && resource.data.role == 'student' &&
           request.resource.data.role == 'director' &&
           request.resource.data.districtId == profile().districtId &&
@@ -203,9 +204,9 @@ service cloud.firestore {
     }
 
     match /muralPosts/{postId} {
-      allow read: if signedIn();
-      allow update: if signedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
+      allow read: if signedIn() && memberOf(resource.data.classId);
+      allow update: if signedIn() && memberOf(resource.data.classId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'updatedAt']);
     }
 
     match /badges/{badgeId} {
