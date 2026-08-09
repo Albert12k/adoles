@@ -129,7 +129,13 @@ export async function getMyQuizAttempt(quizId: string) {
   const firestore = requireFirestore();
   if (!auth?.currentUser) return null;
   const snapshot = await getDoc(doc(firestore, 'quizAttempts', `${quizId}_${auth.currentUser.uid}`));
-  return snapshot.exists() ? snapshot.data() as { status?: string; score?: number; correct?: boolean } : null;
+  return snapshot.exists() ? snapshot.data() as { status?: string; score?: number; correct?: boolean; resultPublished?: boolean } : null;
+}
+
+export async function getQuizRanking(quizId: string) {
+  const firestore = requireFirestore();
+  const snapshot = await getDoc(doc(firestore, 'quizRankings', quizId));
+  return snapshot.exists() ? snapshot.data() as { published?: boolean; entries?: Array<{ userId: string; name: string; score: number }> } : null;
 }
 
 export async function getLeadershipReport(scope: { districtId?: string; classId?: string }) {

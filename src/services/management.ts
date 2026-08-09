@@ -59,7 +59,7 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       const types = key.data().types ?? [];
       const results = expected.map((answer: number | string, index: number) => types[index] === 'open' ? approved && String(submitted[index] ?? '').trim().length > 0 : submitted[index] === answer);
       const correctAnswers = results.filter(Boolean).length;
-      transaction.update(attemptRef, { status: 'reviewed', score: correctAnswers * 10, correctAnswers, totalQuestions: expected.length, correct: correctAnswers === expected.length, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      transaction.update(attemptRef, { status: 'reviewed', score: correctAnswers * 10, correctAnswers, totalQuestions: expected.length, correct: correctAnswers === expected.length, resultPublished: false, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
     return { status: 'reviewed' };
   }
@@ -112,6 +112,24 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   }
   const callable = httpsCallable<{ type: string; itemId: string; approved: boolean }, { status: string }>(requireFunctions(), 'reviewLeadershipItem');
   return (await callable({ type, itemId, approved })).data;
+}
+
+export async function publishLatestQuizRanking() {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar o ranking.');
+  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  if (directed.empty) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
+  const classId = directed.docs[0].id;
+  const quizzes = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
+  const latest = quizzes.docs.sort((a, b) => Number(b.data().releaseAt ?? 0) - Number(a.data().releaseAt ?? 0))[0];
+  if (!latest) throw new Error('Nenhum quiz ativo foi encontrado.');
+  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', latest.id), where('status', '==', 'reviewed')));
+  if (attempts.empty) throw new Error('Ainda não há respostas corrigidas para publicar.');
+  const entries = attempts.docs.map(item => ({ userId: item.data().userId, name: item.data().userName ?? 'Adolescente', score: Number(item.data().score ?? 0) })).sort((a, b) => b.score - a.score);
+  const batch = writeBatch(db);
+  attempts.docs.forEach(item => batch.update(item.ref, { resultPublished: true, publishedAt: serverTimestamp() }));
+  batch.set(doc(db, 'quizRankings', latest.id), { quizId: latest.id, classId, title: latest.data().title, entries, published: true, publishedBy: auth.currentUser.uid, publishedAt: serverTimestamp() });
+  await batch.commit();
+  return { quizId: latest.id, entries: entries.length };
 }
 
 export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string }) {

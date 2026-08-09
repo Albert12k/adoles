@@ -177,7 +177,13 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
         memberOf(request.resource.data.classId) && request.resource.data.status == 'pending';
       allow update: if directorOf(resource.data.classId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'score', 'correct', 'correctAnswers', 'totalQuestions', 'reviewedBy', 'reviewedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'score', 'correct', 'correctAnswers', 'totalQuestions', 'resultPublished', 'publishedAt', 'reviewedBy', 'reviewedAt']);
+    }
+
+    match /quizRankings/{quizId} {
+      allow read: if signedIn() && resource.data.published == true &&
+        (memberOf(resource.data.classId) || directorOf(resource.data.classId) || admin());
+      allow create, update: if directorOf(request.resource.data.classId) || admin();
     }
 
     match /muralPosts/{postId} {

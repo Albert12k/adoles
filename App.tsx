@@ -15,9 +15,9 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { getMyQuizAttempt, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
+import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
-import { manageClassMembership, publishContent, publishQuizContent, reviewLeadershipItem } from './src/services/management';
+import { manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport } from './src/services/report';
 import { selectAndUploadContentPdf } from './src/services/media';
 import { registerPushNotifications } from './src/services/notifications';
@@ -248,10 +248,12 @@ function QuizScreen({ classId }: { classId: string }) {
   const [quiz, setQuiz] = useState<{ id: string; title: string; questions: PublicQuestion[] } | null>(null);
   const [quizStatus, setQuizStatus] = useState('');
   const [quizScore, setQuizScore] = useState<number | null>(null);
+  const [resultPublished, setResultPublished] = useState(false);
+  const [quizRanking, setQuizRanking] = useState<Array<{ userId: string; name: string; score: number }>>([]);
   const [quizError, setQuizError] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Array<number | string | null>>([]);
-  useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setQuizScore(attempt.score ?? null); } } }).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setResultPublished(attempt.resultPublished === true); setQuizScore(attempt.resultPublished ? attempt.score ?? null : null); if (attempt.resultPublished) { const ranking = await getQuizRanking(current.id); setQuizRanking(ranking?.entries ?? []); } } } }).catch(() => undefined); }, [classId]);
   const question = quiz?.questions?.[currentIndex];
   const options = question?.options ?? [];
   const answer = answers[currentIndex] ?? null;
@@ -281,8 +283,9 @@ function QuizScreen({ classId }: { classId: string }) {
         </Pressable>
       ))}
       <Pressable style={[styles.primaryButton, (answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed') && styles.buttonDisabled]} disabled={answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed'} onPress={advance}>
-        <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? '⏳ Aguardando correção' : quizStatus === 'reviewed' ? `🏆 Resultado: ${quizScore ?? 0} pontos` : currentIndex === (quiz?.questions.length ?? 1) - 1 ? '🚀 Finalizar jornada' : 'Próxima fase →'}</Text>
+        <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? '⏳ Aguardando correção' : quizStatus === 'reviewed' && !resultPublished ? '🔒 Nota corrigida · aguardando publicação' : quizStatus === 'reviewed' ? `🏆 Resultado: ${quizScore ?? 0} pontos` : currentIndex === (quiz?.questions.length ?? 1) - 1 ? '🚀 Finalizar jornada' : 'Próxima fase →'}</Text>
       </Pressable>
+      {resultPublished && quizRanking.length > 0 && <View style={styles.formCard}><Text style={styles.sectionTitle}>🏆 Ranking da semana</Text>{quizRanking.map((entry, index) => <View key={entry.userId} style={styles.rankRow}><Text style={styles.rankPlace}>{index + 1}</Text><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{entry.name[0]}</Text></View><Text style={styles.rankName}>{entry.name}</Text><Text style={styles.rankPoints}>{entry.score} pts</Text></View>)}</View>}
       {currentIndex > 0 && quizStatus === '' && <Pressable onPress={() => setCurrentIndex(index => index - 1)}><Text style={styles.skipLink}>← Voltar uma fase</Text></Pressable>}
       {quizError !== '' && <Text style={styles.authError}>{quizError}</Text>}
     </View>
@@ -642,6 +645,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
+  const isQuizRanking = title.includes('ranking semanal');
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   const approvalType: ApprovalType | null = title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
@@ -683,6 +687,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
       if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Jornada bíblica semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: quizQuestions });
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
+      if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
@@ -726,6 +731,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         <Pressable style={styles.addQuestion} onPress={() => setQuizQuestions(items => [...items, { ...quizQuestionTemplates[0], prompt: 'Nova pergunta de múltipla escolha' }])}><Text style={styles.addQuestionText}>＋ Adicionar outra fase</Text></Pressable>
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Liberar no sábado</Text><Text style={styles.manageCopy}>Abertura automática às 00h</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
+      {isQuizRanking && <View style={styles.formCard}><Text style={styles.pageEyebrow}>CONTROLE DO DIRETOR</Text><Text style={styles.pageTitle}>Publique quando a turma estiver reunida.</Text><Text style={styles.pageIntro}>As notas continuam privadas até você liberar. Ao publicar, todos verão o ranking semanal ao mesmo tempo.</Text><View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>STATUS ATUAL</Text><Text style={styles.inviteCode}>🔒 PRIVADO</Text><Text style={styles.cardCaption}>Corrija todas as respostas antes de liberar o placar.</Text></View></View>}
       {isApproval && <>{displayApprovals.length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma solicitação pendente</Text><Text style={styles.manageCopy}>Os novos pedidos de liderança aparecerão aqui automaticamente.</Text></View>}{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable>{!done && <Pressable onPress={() => rejectItem(item)}><Text style={styles.contactLink}>Recusar</Text></Pressable>}</View></View>; })}</>}
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
@@ -759,7 +765,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
         {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
-      {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }
@@ -777,6 +783,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
       ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
+      ['🏆', 'Publicar ranking semanal', 'Liberar notas e placar para a turma', ''],
       ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
