@@ -252,7 +252,7 @@ service cloud.firestore {
       allow create: if signedIn() && directorOf(request.resource.data.classId) && request.resource.data.contactedBy == request.auth.uid;
       allow update: if signedIn() && directorOf(resource.data.classId) &&
         request.resource.data.classId == resource.data.classId && request.resource.data.userId == resource.data.userId &&
-        request.resource.data.contactedBy == request.auth.uid;
+        request.resource.data.contactedBy == resource.data.contactedBy;
     }
 
     match /quizzes/{quizId} {

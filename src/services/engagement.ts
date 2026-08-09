@@ -1,9 +1,9 @@
-import { addDoc, collection, getDocs, limit, query, serverTimestamp, where } from 'firebase/firestore';
+import { collection, doc, getDocs, limit, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 export interface EngagementMember { userId: string; name: string; risk: 'high' | 'medium' | 'regular'; daysInactive: number; studies: number; attendance: number; quizzes: number; activities: number; engagement: number; lastContactAt?: Date; lastOutcome?: EngagementOutcome; }
 export type EngagementOutcome = 'contacted' | 'no_response' | 'reengaged';
-export interface EngagementFollowUp { id: string; classId: string; userId: string; userName: string; riskAtContact: string; outcome: EngagementOutcome; note: string; lastContactAt?: Date; }
+export interface EngagementFollowUp { id: string; classId: string; userId: string; userName: string; riskAtContact: string; outcome: EngagementOutcome; note: string; lastContactAt?: Date; nextFollowUpAt?: Date; resolved: boolean; }
 
 const toDate = (value: unknown) => value && typeof (value as { toDate?: () => Date }).toDate === 'function' ? (value as { toDate: () => Date }).toDate() : null;
 
@@ -40,13 +40,24 @@ export async function listClassEngagement(selectedClassId?: string): Promise<{ c
   return { classId, members: result };
 }
 
-export async function recordEngagementFollowUp(classId: string, member: EngagementMember, input: { outcome: EngagementOutcome; note: string }) {
+export async function recordEngagementFollowUp(classId: string, member: EngagementMember, input: { outcome: EngagementOutcome; note: string; nextFollowUpDays?: number }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para registrar o acompanhamento.');
-  await addDoc(collection(db, 'engagementFollowUps'), { classId, userId: member.userId, userName: member.name, riskAtContact: member.risk, outcome: input.outcome, note: input.note.trim().slice(0, 500), contactedBy: auth.currentUser.uid, lastContactAt: serverTimestamp() });
+  const existing = await getDocs(query(collection(db, 'engagementFollowUps'), where('classId', '==', classId)));
+  const batch = writeBatch(db);
+  existing.docs.filter(item => item.data().userId === member.userId && item.data().resolved !== true).forEach(item => batch.update(item.ref, { resolved: true, resolvedAt: serverTimestamp(), resolvedBy: auth!.currentUser!.uid }));
+  const followUpDays = Number(input.nextFollowUpDays ?? (input.outcome === 'no_response' ? 3 : input.outcome === 'contacted' ? 7 : 14));
+  const nextFollowUpAt = followUpDays > 0 ? Timestamp.fromDate(new Date(Date.now() + followUpDays * 86400000)) : null;
+  batch.set(doc(collection(db, 'engagementFollowUps')), { classId, userId: member.userId, userName: member.name, riskAtContact: member.risk, outcome: input.outcome, note: input.note.trim().slice(0, 500), nextFollowUpAt, resolved: !nextFollowUpAt, contactedBy: auth.currentUser.uid, lastContactAt: serverTimestamp() });
+  await batch.commit();
 }
 
 export async function listEngagementFollowUps(classId: string): Promise<EngagementFollowUp[]> {
   if (!db || !auth?.currentUser || !classId) return [];
   const result = await getDocs(query(collection(db, 'engagementFollowUps'), where('classId', '==', classId)));
-  return result.docs.map(item => ({ id: item.id, classId: String(item.data().classId), userId: String(item.data().userId), userName: String(item.data().userName ?? 'Adolescente'), riskAtContact: String(item.data().riskAtContact ?? 'regular'), outcome: item.data().outcome as EngagementOutcome, note: String(item.data().note ?? ''), lastContactAt: toDate(item.data().lastContactAt) ?? undefined })).sort((a, b) => Number(b.lastContactAt?.getTime() ?? 0) - Number(a.lastContactAt?.getTime() ?? 0));
+  return result.docs.map(item => ({ id: item.id, classId: String(item.data().classId), userId: String(item.data().userId), userName: String(item.data().userName ?? 'Adolescente'), riskAtContact: String(item.data().riskAtContact ?? 'regular'), outcome: item.data().outcome as EngagementOutcome, note: String(item.data().note ?? ''), lastContactAt: toDate(item.data().lastContactAt) ?? undefined, nextFollowUpAt: toDate(item.data().nextFollowUpAt) ?? undefined, resolved: item.data().resolved === true || !item.data().nextFollowUpAt })).sort((a, b) => Number(b.lastContactAt?.getTime() ?? 0) - Number(a.lastContactAt?.getTime() ?? 0));
+}
+
+export async function resolveEngagementFollowUp(item: EngagementFollowUp) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para concluir o retorno.');
+  await updateDoc(doc(db, 'engagementFollowUps', item.id), { resolved: true, resolvedAt: serverTimestamp(), resolvedBy: auth.currentUser.uid });
 }
