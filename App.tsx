@@ -172,16 +172,20 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
   const [saving, setSaving] = useState(false);
   const [studyError, setStudyError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [studySource, setStudySource] = useState<'lesson' | 'bible' | 'book'>('lesson');
+  const [biblePassage, setBiblePassage] = useState('');
+  const [studyHistory, setStudyHistory] = useState<Array<{ id: string; source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; createdAt?: { toDate?: () => Date } }>>([]);
   useEffect(() => { if (classId) listWeeklyContent(classId).then(items => setContent((items[0] as { id: string; title?: string; lessonPdfUrl?: string; bookPdfUrl?: string } | undefined) ?? null)).catch(() => undefined); }, [classId]);
-  useEffect(() => { if (auth?.currentUser) listMyStudyRecords(auth.currentUser.uid).then(items => { const reviewed = items.find(item => item.feedbackVisible); if (reviewed) setFeedback(String(reviewed.feedback ?? 'Resumo avaliado pelo diretor.')); }).catch(() => undefined); }, [completed]);
+  useEffect(() => { if (auth?.currentUser) listMyStudyRecords(auth.currentUser.uid).then(items => { setStudyHistory(items); const reviewed = items.find(item => item.feedbackVisible); if (reviewed) setFeedback(String(reviewed.feedback ?? 'Resumo avaliado pelo diretor.')); }).catch(() => undefined); }, [completed]);
   const registerStudy = async () => {
     if (!firebaseEnabled) return setCompleted(!completed);
     if (!auth?.currentUser || !classId) return setStudyError('Aguarde a aprovação da sua entrada na classe.');
-    if (!content) return setStudyError('O diretor ainda não publicou a lição desta semana.');
+    if (studySource !== 'bible' && !content) return setStudyError('O diretor ainda não publicou o conteúdo desta semana.');
+    if (studySource === 'bible' && biblePassage.trim().length < 3) return setStudyError('Informe o livro e o capítulo que você leu.');
     if (summary.trim().length < 10) return setStudyError('Escreva um resumo com pelo menos 10 caracteres.');
     setSaving(true); setStudyError('');
     try {
-      await saveStudy({ userId: auth.currentUser.uid, userName, classId, contentId: content.id, source: 'lesson', summary: summary.trim(), feedbackVisible: false });
+      await saveStudy({ userId: auth.currentUser.uid, userName, classId, contentId: content?.id ?? 'leitura-biblica-livre', source: studySource, passage: studySource === 'bible' ? biblePassage.trim() : undefined, summary: summary.trim(), feedbackVisible: false });
       setCompleted(true);
     } catch (error) { setStudyError(error instanceof Error ? error.message : 'Não foi possível registrar o estudo.'); }
     finally { setSaving(false); }
@@ -192,11 +196,11 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
       <Text style={styles.pageTitle}>Cresça um pouco a cada dia.</Text>
       <Text style={styles.pageIntro}>Registre o que você aprendeu. Suas anotações são privadas.</Text>
       {[
-        ['📖', 'Lição', content?.title ?? 'Aguardando publicação do diretor', content?.lessonPdfUrl ? 'Toque para abrir o PDF' : 'Ainda não disponível', '#F8E8C8', content?.lessonPdfUrl],
-        ['✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9', ''],
-        ['▣', 'Livro', content?.title ?? 'Livro da semana', content?.bookPdfUrl ? 'Toque para abrir o PDF' : 'Ainda não disponível', '#FBE0D6', content?.bookPdfUrl],
-      ].map(([icon, title, subtitle, meta, bg, url]) => (
-        <Pressable key={title} style={styles.studyCard} onPress={() => { if (url) Linking.openURL(url).catch(() => setStudyError('Não foi possível abrir este PDF.')); }}>
+        ['lesson', '📖', 'Lição', content?.title ?? 'Aguardando publicação do diretor', content?.lessonPdfUrl ? 'Selecionar e abrir o PDF' : 'Ainda não disponível', '#F8E8C8', content?.lessonPdfUrl],
+        ['bible', '✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9', ''],
+        ['book', '▣', 'Livro', content?.title ?? 'Livro da semana', content?.bookPdfUrl ? 'Selecionar e abrir o PDF' : 'Ainda não disponível', '#FBE0D6', content?.bookPdfUrl],
+      ].map(([source, icon, title, subtitle, meta, bg, url]) => (
+        <Pressable key={source} style={[styles.studyCard, studySource === source && styles.studyCardSelected]} onPress={() => { setStudySource(source as 'lesson' | 'bible' | 'book'); setCompleted(false); if (url) Linking.openURL(url).catch(() => setStudyError('Não foi possível abrir este PDF.')); }}>
           <View style={[styles.studyIcon, { backgroundColor: bg }]}><Text style={styles.studyEmoji}>{icon}</Text></View>
           <View style={styles.flex}>
             <Text style={styles.studyLabel}>{title}</Text>
@@ -206,8 +210,9 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
           <Text style={styles.chevron}>›</Text>
         </Pressable>
       ))}
+      {studySource === 'bible' && <AuthField label="Referência bíblica" placeholder="Ex.: João 3:16-21" value={biblePassage} onChangeText={setBiblePassage} />}
       <View style={styles.summaryCard}>
-        <Text style={styles.authLabel}>Meu resumo de hoje</Text>
+        <Text style={styles.authLabel}>Meu resumo de {studySource === 'lesson' ? 'lição' : studySource === 'bible' ? 'leitura bíblica' : 'livro'} de hoje</Text>
         <Text style={styles.privateHint}>🔒 Somente você e seu diretor podem visualizar.</Text>
         <TextInput multiline value={summary} onChangeText={setSummary} placeholder="O que mais chamou sua atenção?" placeholderTextColor="#8A9892" style={[styles.authInput, styles.summaryInput]} />
         <Text style={styles.charCount}>{summary.length}/500</Text>
@@ -217,6 +222,7 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
       </Pressable>
       {studyError !== '' && <Text style={styles.authError}>{studyError}</Text>}
       {feedback !== '' && <Text style={styles.successNotice}>✓ {feedback}</Text>}
+      {studyHistory.length > 0 && <><Text style={styles.sectionTitle}>Meus estudos recentes</Text>{studyHistory.slice(0, 6).map(item => <View key={item.id} style={styles.formCard}><View style={styles.weekRow}><Text style={styles.manageTitle}>{item.source === 'lesson' ? '📖 Lição' : item.source === 'bible' ? '✦ Bíblia' : '▣ Livro'}</Text><Text style={styles.cardCaption}>{item.createdAt?.toDate?.().toLocaleDateString('pt-BR') ?? ''}</Text></View>{item.passage && <Text style={styles.challengeStatus}>{item.passage}</Text>}<Text style={styles.manageCopy} numberOfLines={2}>{item.summary}</Text></View>)}</>}
     </View>
   );
 }
@@ -1134,7 +1140,7 @@ const styles = StyleSheet.create({
   brand: { color: colors.teal, fontSize: 16, fontWeight: '900', letterSpacing: 1.5, flex: 1 }, pagePad: { padding: 20 },
   pageEyebrow: { color: colors.coral, fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginTop: 6 },
   pageTitle: { color: colors.ink, fontSize: 27, lineHeight: 35, fontWeight: '900', marginTop: 7 }, pageIntro: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, marginBottom: 20 },
-  studyCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, padding: 14, marginBottom: 11 },
+  studyCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 18, padding: 14, marginBottom: 11, borderWidth: 2, borderColor: 'transparent' }, studyCardSelected: { borderColor: colors.coral, backgroundColor: '#FFF8F5' },
   studyIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, studyEmoji: { fontSize: 21 }, studyLabel: { color: colors.coral, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }, studyTitle: { color: colors.ink, fontSize: 15, fontWeight: '800', marginVertical: 3 }, cardCaption: { color: colors.muted, fontSize: 11, lineHeight: 16 }, chevron: { color: colors.tealMedium, fontSize: 28 },
   summaryCard: { backgroundColor: colors.white, borderRadius: 18, padding: 15, marginTop: 3 }, privateHint: { color: colors.tealMedium, fontSize: 9, marginBottom: 10 }, summaryInput: { height: 110, textAlignVertical: 'top', paddingTop: 13 }, charCount: { color: colors.muted, fontSize: 8, textAlign: 'right', marginTop: 5 }, pendingHint: { color: colors.tealMedium, fontSize: 9, lineHeight: 14, textAlign: 'center', marginTop: 10 },
   warningCard: { backgroundColor: '#FFF3DB', borderRadius: 14, borderWidth: 1, borderColor: colors.gold, padding: 12, marginTop: 10 },

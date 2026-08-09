@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -59,16 +60,20 @@ export async function listWeeklyContent(classId: string) {
 
 export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & { userName?: string }) {
   const firestore = requireFirestore();
-  return addDoc(collection(firestore, 'studyRecords'), {
-    ...input,
-    createdAt: serverTimestamp(),
+  const now = new Date(); const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const recordRef = doc(firestore, 'studyRecords', `${input.userId}_${dayKey}_${input.source}`);
+  await runTransaction(firestore, async transaction => {
+    const existing = await transaction.get(recordRef);
+    if (existing.exists()) throw new Error('Você já registrou este tipo de estudo hoje.');
+    transaction.set(recordRef, { ...input, dayKey, createdAt: serverTimestamp() });
   });
+  return recordRef;
 }
 
 export async function listMyStudyRecords(userId: string) {
   const firestore = requireFirestore();
   const result = await getDocs(query(collection(firestore, 'studyRecords'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(10)));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as { feedbackVisible?: boolean; feedback?: string }) }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; feedbackVisible?: boolean; feedback?: string; createdAt?: { toDate?: () => Date } }) }));
 }
 
 export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {
