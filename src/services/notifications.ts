@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 Notifications.setNotificationHandler({
@@ -19,4 +19,9 @@ export async function registerPushNotifications() {
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
   await setDoc(doc(db, 'pushTokens', user.uid), { userId: user.uid, expoPushToken: token, platform: Device.osName ?? 'unknown', updatedAt: serverTimestamp() }, { merge: true });
   return token;
+}
+
+export async function markNotificationRead(notificationId: string) {
+  if (!db || !auth?.currentUser || !notificationId) return;
+  await updateDoc(doc(db, 'notifications', notificationId), { read: true });
 }
