@@ -6,6 +6,7 @@ import { getManagedClass } from '../services/management';
 export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer';
 export interface ApprovalItem { id: string; name: string; copy: string; }
 export interface ClassMember { id: string; name: string; role: string; }
+export interface LeadershipHistoryItem { id: string; className: string; action: 'transfer' | 'revoke'; targetName: string; status: string; reviewedAt?: Date; }
 
 export function usePendingApprovals(type: ApprovalType | null, selectedClassId?: string) {
   const [items, setItems] = useState<ApprovalItem[]>([]);
@@ -64,4 +65,28 @@ export function useClassManagement(selectedClassId?: string) {
     return () => { active = false; unsubscribe(); };
   }, [selectedClassId]);
   return state;
+}
+
+export function useLeadershipHistory(enabled: boolean) {
+  const [items, setItems] = useState<LeadershipHistoryItem[]>([]);
+  useEffect(() => {
+    const user = auth?.currentUser;
+    if (!enabled || !firebaseEnabled || !db || !user) return;
+    let unsubscribe: () => void = () => {};
+    getDoc(doc(db, 'users', user.uid)).then(profile => {
+      const data = profile.data();
+      if (!data) return;
+      const historyQuery = data.role === 'admin'
+        ? query(collection(db!, 'leadershipTransfers'), limit(50))
+        : data.role === 'coordinator'
+          ? query(collection(db!, 'leadershipTransfers'), where('districtId', '==', data.districtId), limit(50))
+          : query(collection(db!, 'leadershipTransfers'), where('requestedBy', '==', user.uid), limit(50));
+      unsubscribe = onSnapshot(historyQuery, snapshot => setItems(snapshot.docs.map(item => {
+        const entry = item.data();
+        return { id: item.id, className: entry.className ?? 'Base', action: entry.action ?? 'revoke', targetName: entry.targetName ?? '', status: entry.status ?? 'pending', reviewedAt: entry.reviewedAt?.toDate?.() };
+      }).sort((a, b) => (b.reviewedAt?.getTime() ?? 0) - (a.reviewedAt?.getTime() ?? 0))));
+    }).catch(() => undefined);
+    return () => unsubscribe();
+  }, [enabled]);
+  return items;
 }

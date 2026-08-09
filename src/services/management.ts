@@ -74,10 +74,12 @@ export async function publishQuizContent(input: {
 export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean) {
   if (type === 'leadershipTransfer') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');
+    let requestData: Record<string, any> = {};
     await runTransaction(db, async transaction => {
       const requestRef = doc(db!, 'leadershipTransfers', itemId); const requestDoc = await transaction.get(requestRef);
       if (!requestDoc.exists() || requestDoc.data().status !== 'pending') throw new Error('Solicitação não encontrada ou já analisada.');
       const request = requestDoc.data();
+      requestData = request;
       if (!approved) { transaction.update(requestRef, { status: 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() }); return; }
       const classRef = doc(db!, 'classes', request.classId); const selectedClass = await transaction.get(classRef);
       const currentRef = doc(db!, 'users', request.requestedBy); const current = await transaction.get(currentRef);
@@ -97,6 +99,9 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       if (currentMember.exists()) transaction.update(currentMemberRef, { role: 'student', leadershipEndedAt: serverTimestamp(), leadershipEndedBy: auth!.currentUser!.uid });
       transaction.update(requestRef, { status: 'approved', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
+    const decision = approved ? 'aprovada' : 'recusada';
+    await notifyUser(requestData.requestedBy, requestData.classId, 'leadership', 'Solicitação de liderança analisada', `Sua solicitação para ${requestData.className ?? 'a base'} foi ${decision}.`).catch(() => undefined);
+    if (approved && requestData.action === 'transfer' && requestData.targetUserId) await notifyUser(requestData.targetUserId, requestData.classId, 'leadership', 'Você agora dirige uma base', `A liderança de ${requestData.className ?? 'sua base'} foi transferida para você.`).catch(() => undefined);
     return { status: approved ? 'approved' : 'rejected' };
   }
   if (type === 'challenge') {
@@ -263,6 +268,8 @@ export async function manageClassMembership(input: { action: 'regenerateCode' | 
     const selectedClass = await getDoc(doc(db, 'classes', input.classId));
     if (!selectedClass.exists()) throw new Error('Base não encontrada.');
     const classData = selectedClass.data();
+    const duplicate = await getDocs(query(collection(db, 'leadershipTransfers'), where('requestedBy', '==', auth.currentUser.uid), where('status', '==', 'pending'), limit(1)));
+    if (!duplicate.empty) throw new Error('Você já possui uma solicitação de liderança aguardando análise.');
     let targetName = '';
     if (input.action === 'transferLeadership') {
       if (!input.targetUserId) throw new Error('Selecione o novo diretor.');
