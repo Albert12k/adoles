@@ -38,10 +38,12 @@ export async function getPresenceScenario(classId: string): Promise<{ setting: s
   return { setting, scenario: resolvePresenceScenario(setting, classId) };
 }
 
-export async function updatePresenceScenario(setting: string) {
+export async function updatePresenceScenario(setting: string, selectedClassId?: string) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para alterar o cenário.');
   if (setting !== 'auto' && !presenceScenarios.some(item => item.id === setting)) throw new Error('Cenário inválido.');
-  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(10)));
   if (directed.empty) throw new Error('Nenhuma base está vinculada à sua conta.');
-  await updateDoc(doc(db, 'classes', directed.docs[0].id), { presenceScenario: setting });
+  const selected = selectedClassId ? directed.docs.find(item => item.id === selectedClassId) : directed.docs[0];
+  if (!selected) throw new Error('A base selecionada não está vinculada à sua conta.');
+  await updateDoc(doc(db, 'classes', selected.id), { presenceScenario: setting });
 }

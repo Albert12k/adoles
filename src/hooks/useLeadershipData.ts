@@ -7,7 +7,7 @@ export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJo
 export interface ApprovalItem { id: string; name: string; copy: string; }
 export interface ClassMember { id: string; name: string; role: string; }
 
-export function usePendingApprovals(type: ApprovalType | null) {
+export function usePendingApprovals(type: ApprovalType | null, selectedClassId?: string) {
   const [items, setItems] = useState<ApprovalItem[]>([]);
   useEffect(() => {
     const user = auth?.currentUser;
@@ -20,12 +20,12 @@ export function usePendingApprovals(type: ApprovalType | null) {
       let approvalsQuery;
       if (type === 'attendance' || type === 'studyRecord' || type === 'quizAttempt') {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
-        const ids = directed.docs.map(item => item.id);
+        const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = type === 'attendance' ? query(collection(db!, 'attendance'), where('classId', 'in', ids), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(30)) : type === 'quizAttempt' ? query(collection(db!, 'quizAttempts'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'studyRecords'), where('classId', 'in', ids), where('feedbackVisible', '==', false), limit(30));
       } else if (type === 'classJoinRequest' || type === 'flashcard') {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
-        const ids = directed.docs.map(item => item.id);
+        const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30));
       } else if (type === 'challenge') {
@@ -41,18 +41,18 @@ export function usePendingApprovals(type: ApprovalType | null) {
       })));
     })();
     return () => { active = false; unsubscribe(); };
-  }, [type]);
+  }, [type, selectedClassId]);
   return items;
 }
 
-export function useClassManagement() {
+export function useClassManagement(selectedClassId?: string) {
   const [state, setState] = useState<{ classId: string; inviteCode: string; members: ClassMember[] }>({ classId: '', inviteCode: '', members: [] });
   useEffect(() => {
     const user = auth?.currentUser;
     if (!firebaseEnabled || !db || !user) return;
     let active = true;
     let unsubscribe: () => void = () => {};
-    getManagedClass().then(result => {
+    getManagedClass(selectedClassId).then(result => {
       if (!active) return;
       setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members });
       if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', '==', result.classId), where('active', '==', true), limit(100)), snapshot => {
@@ -60,6 +60,6 @@ export function useClassManagement() {
       });
     }).catch(() => undefined);
     return () => { active = false; unsubscribe(); };
-  }, []);
+  }, [selectedClassId]);
   return state;
 }

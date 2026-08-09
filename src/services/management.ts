@@ -148,12 +148,14 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   return (await callable({ type, itemId, approved })).data;
 }
 
-export async function publishLatestQuizRanking() {
+export async function publishLatestQuizRanking(selectedClassId?: string) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar o ranking.');
-  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(10)));
   if (directed.empty) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
-  const classId = directed.docs[0].id;
-  const classData = directed.docs[0].data();
+  const selected = selectedClassId ? directed.docs.find(item => item.id === selectedClassId) : directed.docs[0];
+  if (!selected) throw new Error('A base selecionada não está vinculada à sua conta.');
+  const classId = selected.id;
+  const classData = selected.data();
   const quizzes = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
   const latest = quizzes.docs.sort((a, b) => Number(b.data().releaseAt ?? 0) - Number(a.data().releaseAt ?? 0))[0];
   if (!latest) throw new Error('Nenhum quiz ativo foi encontrado.');

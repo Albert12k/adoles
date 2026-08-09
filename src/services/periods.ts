@@ -10,11 +10,12 @@ export interface PeriodClosure { id: string; classId: string; className: string;
 
 const dateOf = (value: unknown) => value && typeof (value as { toDate?: () => Date }).toDate === 'function' ? (value as { toDate: () => Date }).toDate() : null;
 
-export async function closeCurrentPeriod(kind: PeriodKind): Promise<PeriodClosure> {
+export async function closeCurrentPeriod(kind: PeriodKind, selectedClassId?: string): Promise<PeriodClosure> {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para encerrar o período.');
-  const classes = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  const classes = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(10)));
   if (classes.empty) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
-  const classDoc = classes.docs[0];
+  const classDoc = selectedClassId ? classes.docs.find(item => item.id === selectedClassId) : classes.docs[0];
+  if (!classDoc) throw new Error('A base selecionada não está vinculada à sua conta.');
   const classId = classDoc.id;
   const now = new Date();
   const year = now.getFullYear();

@@ -5,11 +5,13 @@ export interface EngagementMember { userId: string; name: string; risk: 'high' |
 
 const toDate = (value: unknown) => value && typeof (value as { toDate?: () => Date }).toDate === 'function' ? (value as { toDate: () => Date }).toDate() : null;
 
-export async function listClassEngagement(): Promise<{ classId: string; members: EngagementMember[] }> {
+export async function listClassEngagement(selectedClassId?: string): Promise<{ classId: string; members: EngagementMember[] }> {
   if (!db || !auth?.currentUser) return { classId: '', members: [] };
-  const classes = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
+  const classes = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(10)));
   if (classes.empty) return { classId: '', members: [] };
-  const classId = classes.docs[0].id;
+  const selected = selectedClassId ? classes.docs.find(item => item.id === selectedClassId) : classes.docs[0];
+  if (!selected) return { classId: '', members: [] };
+  const classId = selected.id;
   const [members, studies, attendance, quizzes, activities] = await Promise.all([
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true))),
     getDocs(query(collection(db, 'studyRecords'), where('classId', '==', classId))),
