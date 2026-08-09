@@ -787,7 +787,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   useEffect(() => { if (isClassActivity) listDirectedActivities(selectedClassId).then(setDirectedActivities).catch(() => undefined); }, [isClassActivity, selectedClassId]);
   useEffect(() => { if (isRisk) listClassEngagement(selectedClassId).then(result => { setEngagementClassId(result.classId); setEngagementMembers(result.members); }).catch(() => undefined); }, [isRisk, selectedClassId]);
   useEffect(() => { if (isReport) loadLeadershipReport().then(setLeadershipReport).catch(error => setActionError(error instanceof Error ? error.message : 'Não foi possível carregar o relatório.')); }, [isReport]);
-  const approvalType: ApprovalType | null = title.includes('flashcards') ? 'flashcard' : title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const approvalType: ApprovalType | null = title.includes('transferências') ? 'leadershipTransfer' : title.includes('flashcards') ? 'flashcard' : title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType, role === 'diretor' ? selectedClassId : undefined);
   const classManagement = useClassManagement(role === 'diretor' ? selectedClassId : undefined);
   useEffect(() => { if (isPresenceTheme && classManagement.classId) getPresenceScenario(classManagement.classId).then(result => { setSelectedScenario(result.setting); setScenarioPreviewIndex(Math.max(0, presenceScenarios.findIndex(item => item.id === result.scenario.id))); }).catch(() => undefined); }, [isPresenceTheme, classManagement.classId]);
@@ -814,11 +814,11 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const runMembershipAction = async (action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector') => {
     if (!firebaseEnabled) return setMemberNotice('Ação concluída no modo demonstrativo');
     if (!classManagement.classId) return setActionError('Nenhuma classe de liderança foi encontrada.');
-    if (action !== 'regenerateCode' && !selectedMemberId) return setActionError('Selecione um membro primeiro.');
+    if ((action === 'removeMember' || action === 'transferLeadership') && !selectedMemberId) return setActionError('Selecione um membro primeiro.');
     setActionError('');
     try {
       const result = await manageClassMembership({ action, classId: classManagement.classId, targetUserId: selectedMemberId || undefined });
-      setMemberNotice(result.inviteCode ? `Novo código: ${result.inviteCode}` : 'Ação concluída com sucesso');
+      setMemberNotice(result.inviteCode ? `Novo código: ${result.inviteCode}` : action === 'transferLeadership' || action === 'revokeDirector' ? 'Solicitação enviada ao coordenador' : 'Ação concluída com sucesso');
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível concluir a ação.'); }
   };
   const saveManagement = async () => {
@@ -948,6 +948,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
     : role === 'coordenador'
       ? [
         ['✓', 'Aprovar diretores', 'Novos responsáveis aguardando análise', '3'],
+        ['⇄', 'Aprovar transferências', 'Trocas de liderança aguardando análise', ''],
         ['◆', 'Validar desafios', 'Evidências enviadas pelas classes', '2'],
         ['⌘', 'Classes do distrito', 'Desempenho por igreja e faixa', '12'],
         ['◉', 'Encontros distritais', 'Criar e gerenciar próximos eventos', ''],

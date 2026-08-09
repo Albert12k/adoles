@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, where, writeBatch } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 
 const requireFunctions = () => {
@@ -71,7 +71,34 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard', itemId: string, approved: boolean) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean) {
+  if (type === 'leadershipTransfer') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');
+    await runTransaction(db, async transaction => {
+      const requestRef = doc(db!, 'leadershipTransfers', itemId); const requestDoc = await transaction.get(requestRef);
+      if (!requestDoc.exists() || requestDoc.data().status !== 'pending') throw new Error('Solicitação não encontrada ou já analisada.');
+      const request = requestDoc.data();
+      if (!approved) { transaction.update(requestRef, { status: 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() }); return; }
+      const classRef = doc(db!, 'classes', request.classId); const selectedClass = await transaction.get(classRef);
+      const currentRef = doc(db!, 'users', request.requestedBy); const current = await transaction.get(currentRef);
+      const targetRef = request.targetUserId ? doc(db!, 'users', request.targetUserId) : null;
+      const target = targetRef ? await transaction.get(targetRef) : null;
+      const currentMemberRef = doc(db!, 'classMembers', `${request.classId}_${request.requestedBy}`); const currentMember = await transaction.get(currentMemberRef);
+      const targetMemberRef = request.targetUserId ? doc(db!, 'classMembers', `${request.classId}_${request.targetUserId}`) : null;
+      const targetMember = targetMemberRef ? await transaction.get(targetMemberRef) : null;
+      if (!selectedClass.exists() || !current.exists() || (targetRef && !target?.exists()) || (targetMemberRef && !targetMember?.exists())) throw new Error('Usuário ou base da transferência não encontrado.');
+      const directorIds = (selectedClass.data().directorIds ?? []).filter((id: string) => id !== request.requestedBy);
+      if (request.action === 'transfer' && request.targetUserId && !directorIds.includes(request.targetUserId)) directorIds.push(request.targetUserId);
+      transaction.update(classRef, { directorIds });
+      if (targetRef) transaction.update(targetRef, { role: 'director', districtId: request.districtId, classIds: arrayUnion(request.classId) });
+      if (targetMemberRef) transaction.update(targetMemberRef, { role: 'director', promotedAt: serverTimestamp(), promotedBy: auth!.currentUser!.uid });
+      const remaining = (current.data().classIds ?? []).filter((id: string) => id !== request.classId);
+      transaction.update(currentRef, { classIds: arrayRemove(request.classId), ...(remaining.length === 0 ? { role: 'student' } : {}) });
+      if (currentMember.exists()) transaction.update(currentMemberRef, { role: 'student', leadershipEndedAt: serverTimestamp(), leadershipEndedBy: auth!.currentUser!.uid });
+      transaction.update(requestRef, { status: 'approved', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+    });
+    return { status: approved ? 'approved' : 'rejected' };
+  }
   if (type === 'challenge') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para validar o desafio.');
     await runTransaction(db, async transaction => {
@@ -229,6 +256,21 @@ export async function manageClassMembership(input: { action: 'regenerateCode' | 
       transaction.update(doc(db!, 'users', input.targetUserId!), { classIds: arrayRemove(input.classId) });
       transaction.update(memberRef, { active: false, removedAt: serverTimestamp(), removedBy: auth!.currentUser!.uid });
     });
+    return { success: true };
+  }
+  if (input.action === 'transferLeadership' || input.action === 'revokeDirector') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para solicitar a alteração.');
+    const selectedClass = await getDoc(doc(db, 'classes', input.classId));
+    if (!selectedClass.exists()) throw new Error('Base não encontrada.');
+    const classData = selectedClass.data();
+    let targetName = '';
+    if (input.action === 'transferLeadership') {
+      if (!input.targetUserId) throw new Error('Selecione o novo diretor.');
+      const target = await getDoc(doc(db, 'classMembers', `${input.classId}_${input.targetUserId}`));
+      if (!target.exists() || !target.data().active) throw new Error('O novo responsável precisa ser membro ativo da base.');
+      targetName = target.data().name ?? 'Novo diretor';
+    }
+    await addDoc(collection(db, 'leadershipTransfers'), { classId: input.classId, className: classData.name ?? 'Base', districtId: classData.districtId, action: input.action === 'transferLeadership' ? 'transfer' : 'revoke', requestedBy: auth.currentUser.uid, targetUserId: input.action === 'transferLeadership' ? input.targetUserId : null, targetName, name: auth.currentUser.displayName ?? 'Diretor atual', status: 'pending', createdAt: serverTimestamp() });
     return { success: true };
   }
   const callable = httpsCallable<typeof input, { success?: boolean; inviteCode?: string; className?: string }>(requireFunctions(), 'manageClassMembership');

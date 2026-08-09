@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, wh
 import { auth, db, firebaseEnabled } from '../config/firebase';
 import { getManagedClass } from '../services/management';
 
-export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard';
+export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer';
 export interface ApprovalItem { id: string; name: string; copy: string; }
 export interface ClassMember { id: string; name: string; role: string; }
 
@@ -28,6 +28,8 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30));
+      } else if (type === 'leadershipTransfer') {
+        approvalsQuery = profile.role === 'admin' ? query(collection(db!, 'leadershipTransfers'), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'leadershipTransfers'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
       } else if (type === 'challenge') {
         if (profile.role === 'admin') approvalsQuery = query(collection(db!, 'challenges'), where('status', '==', 'pending'), limit(30));
         else approvalsQuery = query(collection(db!, 'challenges'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
@@ -37,7 +39,7 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
       }
       unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.map(item => {
         const data = item.data();
-        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', copy: type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? String(data.summary ?? 'Resumo enviado') : type === 'attendance' ? `Semana ${data.week} · aguardando presença` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
+        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? String(data.summary ?? 'Resumo enviado') : type === 'attendance' ? `Semana ${data.week} · aguardando presença` : type === 'classJoinRequest' ? 'Solicitação para entrar na classe' : type === 'challenge' ? `${data.bonusPoints ?? 0} pontos · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
       })));
     })();
     return () => { active = false; unsubscribe(); };

@@ -17,9 +17,9 @@ service cloud.firestore {
         request.resource.data.role == 'student' && request.resource.data.classIds.size() == 0;
       allow update: if admin() || (request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoUrl', 'status', 'themeColor'])) ||
-        (roleIs('coordinator') && resource.data.role == 'student' &&
-          request.resource.data.role == 'director' &&
-          request.resource.data.districtId == profile().districtId &&
+        (roleIs('coordinator') && resource.data.districtId == profile().districtId &&
+          ((resource.data.role == 'student' && request.resource.data.role == 'director') ||
+           (resource.data.role == 'director' && request.resource.data.role == 'student')) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'districtId', 'classIds'])) ||
         (roleIs('director') && resource.data.role == 'student' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['classIds', 'districtId']) &&
@@ -74,6 +74,19 @@ service cloud.firestore {
         (roleIs('director') && request.resource.data.classId in profile().classIds);
       allow update: if admin() || roleIs('coordinator') ||
         (roleIs('director') && resource.data.classId in profile().classIds);
+    }
+
+    match /leadershipTransfers/{transferId} {
+      allow create: if signedIn() && directorOf(request.resource.data.classId) &&
+        request.resource.data.requestedBy == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.action in ['transfer', 'revoke'];
+      allow read: if signedIn() && (resource.data.requestedBy == request.auth.uid || admin() ||
+        coordinatorOf(resource.data.districtId));
+      allow update: if admin() || (roleIs('coordinator') &&
+        resource.data.districtId == profile().districtId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']) &&
+        request.resource.data.reviewedBy == request.auth.uid);
     }
 
     match /churches/{churchId} {
