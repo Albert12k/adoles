@@ -1,4 +1,4 @@
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 export interface LeadershipSettings {
@@ -37,4 +37,20 @@ export async function getAccountDeletionRequest() {
   if (!db || !auth?.currentUser) return null;
   const result = await getDoc(doc(db, 'accountDeletionRequests', auth.currentUser.uid));
   return result.exists() ? { status: String(result.data().status ?? 'pending') } : null;
+}
+
+export interface AccountDeletionRequest { id: string; userId: string; name: string; email: string; role: string; reason: string; status: 'pending' | 'approved' | 'rejected'; requestedAt?: Date; reviewedAt?: Date; reviewNote?: string; }
+
+export async function listAccountDeletionRequests(): Promise<AccountDeletionRequest[]> {
+  if (!db || !auth?.currentUser) return [];
+  const result = await getDocs(collection(db, 'accountDeletionRequests'));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<AccountDeletionRequest, 'id' | 'requestedAt' | 'reviewedAt'>), requestedAt: item.data().requestedAt?.toDate?.(), reviewedAt: item.data().reviewedAt?.toDate?.() })).sort((a, b) => Number(b.requestedAt?.getTime() ?? 0) - Number(a.requestedAt?.getTime() ?? 0));
+}
+
+export async function reviewAccountDeletionRequest(request: AccountDeletionRequest, approve: boolean, reviewNote: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a solicitação.');
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'accountDeletionRequests', request.id), { status: approve ? 'approved' : 'rejected', reviewNote: reviewNote.trim().slice(0, 500), reviewedBy: auth.currentUser.uid, reviewedAt: serverTimestamp() });
+  if (approve) batch.update(doc(db, 'users', request.userId), { active: false, deactivationReason: 'account_deletion_requested', deactivatedAt: serverTimestamp() });
+  await batch.commit();
 }
