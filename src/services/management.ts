@@ -205,12 +205,16 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   }
   if (type === 'flashcard') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para moderar o flashcard.');
+    let cardData: Record<string, any> = {};
     await runTransaction(db, async transaction => {
       const cardRef = doc(db!, 'flashcards', itemId);
       const card = await transaction.get(cardRef);
       if (!card.exists()) throw new Error('Flashcard não encontrado.');
-      transaction.update(cardRef, { status: approved ? 'published' : 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      if (card.data().status !== 'pending') throw new Error('Este flashcard já foi analisado.');
+      cardData = card.data();
+      transaction.update(cardRef, { status: approved ? 'published' : 'rejected', reviewerFeedback: options?.feedback?.trim().slice(0, 500) ?? '', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
+    await notifyUser(cardData.userId, cardData.classId, 'flashcardDecision', approved ? 'Flashcard publicado' : 'Flashcard devolvido', approved ? 'Seu cartão foi aprovado e já está no baralho da turma.' : 'Seu cartão precisa de ajustes. Confira a orientação do diretor.').catch(() => undefined);
     return { status: approved ? 'published' : 'rejected' };
   }
   if (type === 'quizAttempt') {

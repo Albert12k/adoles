@@ -309,8 +309,11 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         directorOf(resource.data.classId) ||
         (resource.data.status == 'published' && memberOf(resource.data.classId)));
-      allow update: if directorOf(resource.data.classId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+      allow update: if (directorOf(resource.data.classId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewerFeedback', 'reviewedBy', 'reviewedAt'])) ||
+        (signedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'rejected' && request.resource.data.status == 'pending' &&
+          request.resource.data.classId == resource.data.classId && request.resource.data.userId == resource.data.userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['front', 'back', 'status', 'reviewerFeedback', 'resubmissionCount', 'resubmittedAt']));
     }
 
     match /muralPosts/{postId} {
