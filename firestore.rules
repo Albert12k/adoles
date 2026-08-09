@@ -94,6 +94,20 @@ service cloud.firestore {
       allow update: if admin() || coordinatorOf(resource.data.districtId) || directorOf(resource.data.classId);
     }
 
+    match /districtEvents/{eventId} {
+      allow read: if signedIn() && (admin() || resource.data.districtId == profile().districtId);
+      allow create: if coordinatorOf(request.resource.data.districtId);
+      allow update: if coordinatorOf(resource.data.districtId);
+    }
+
+    match /eventRsvps/{rsvpId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'confirmed';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
+        coordinatorOf(resource.data.districtId));
+      allow update: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
     match /weeklyContent/{contentId} {
       allow read: if memberOf(resource.data.classId);
       allow create: if directorOf(request.resource.data.classId);

@@ -26,6 +26,7 @@ import type { ApprovalType } from './src/hooks/useLeadershipData';
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
+import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEvents, type DistrictEvent } from './src/services/events';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -257,8 +258,11 @@ function QuizScreen() {
   );
 }
 
-function ProfileScreen({ name, className, onExit }: { name: string; className: string; onExit: () => Promise<void> }) {
-  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes'>('hub');
+function ProfileScreen({ name, className, districtId, onExit }: { name: string; className: string; districtId: string; onExit: () => Promise<void> }) {
+  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes' | 'eventos'>('hub');
+  const [events, setEvents] = useState<DistrictEvent[]>([]);
+  const [confirmedEvents, setConfirmedEvents] = useState<string[]>([]);
+  useEffect(() => { if (districtId) listDistrictEvents(districtId).then(setEvents).catch(() => undefined); }, [districtId]);
   const live = useLiveDashboard();
   if (communityView !== 'hub') {
     const content = {
@@ -268,6 +272,7 @@ function ProfileScreen({ name, className, onExit }: { name: string; className: s
       desafios: { title: 'Desafios', eyebrow: 'MISSÃO DO MÊS', copy: 'Participe com toda a sua classe e some pontos.' },
       hall: { title: 'Hall da fama', eyebrow: 'TRIMESTRES ANTERIORES', copy: 'Quem deixou sua marca na história da turma.' },
       notificacoes: { title: 'Notificações', eyebrow: 'FIQUE POR DENTRO', copy: 'Atualizações importantes da sua jornada.' },
+      eventos: { title: 'Encontros', eyebrow: 'AGENDA DISTRITAL', copy: 'Próximos encontros preparados pelo seu coordenador.' },
     }[communityView];
     return (
       <View style={styles.pagePad}>
@@ -284,6 +289,7 @@ function ProfileScreen({ name, className, onExit }: { name: string; className: s
         {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
         {communityView === 'hall' && <>{[['🥇', 'Marina Costa', 'Campeã · Trimestre 2', '1.860 pts'], ['🥈', 'João Pedro', 'Vice-campeão · Trimestre 2', '1.720 pts'], ['🏆', 'Base Geração', 'Classe destaque do distrito', '92%']].map(([icon, name, copy, points]) => <View key={name} style={styles.hallCard}><Text style={styles.hallIcon}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><Text style={styles.rankPoints}>{points}</Text></View>)}</>}
         {communityView === 'notificacoes' && <>{(live.notifications.length > 0 ? live.notifications.map(item => [item.type.toUpperCase(), item.title, item.body, item.read ? 'read' : 'unread']) : [['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora', 'unread'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h', 'read'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem', 'read'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias', 'read']]).map(([tag, title, copy, status]) => <View key={`${tag}_${title}`} style={[styles.notificationCard, status === 'unread' && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{status === 'unread' && <View style={styles.unreadDot} />}</View>)}</>}
+        {communityView === 'eventos' && <>{events.length === 0 && <Text style={styles.pageIntro}>Nenhum encontro publicado para seu distrito.</Text>}{events.map(event => <View key={event.id} style={styles.formCard}><Text style={styles.manageTitle}>{event.title}</Text><Text style={styles.manageCopy}>{event.dateLabel} · {event.location}</Text><Pressable style={[styles.approveButton, confirmedEvents.includes(event.id) && styles.approveButtonDone]} disabled={confirmedEvents.includes(event.id)} onPress={async () => { await confirmEventAttendance(event); setConfirmedEvents(items => [...items, event.id]); }}><Text style={styles.approveButtonText}>{confirmedEvents.includes(event.id) ? '✓ Participação confirmada' : 'Confirmar participação'}</Text></Pressable></View>)}</>}
       </View>
     );
   }
@@ -303,7 +309,7 @@ function ProfileScreen({ name, className, onExit }: { name: string; className: s
       <Text style={styles.sectionTitle}>Comunidade</Text>
       <View style={styles.communityGrid}>
         {[
-          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'], ['hall', '★', 'Hall da fama', '#E4E0FA'], ['notificacoes', '●', 'Notificações', '#DCEDE9'],
+          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'], ['eventos', '◉', 'Encontros', '#F8E8C8'], ['hall', '★', 'Hall da fama', '#E4E0FA'], ['notificacoes', '●', 'Notificações', '#DCEDE9'],
         ].map(([key, icon, label, bg]) => <Pressable key={key} style={[styles.communityCard, { backgroundColor: bg }]} onPress={() => setCommunityView(key as typeof communityView)}><Text style={styles.communityIcon}>{icon}</Text><Text style={styles.communityLabel}>{label}</Text><Text style={styles.communityLink}>Abrir ›</Text></Pressable>)}
       </View>
       <Text style={styles.sectionTitle}>Conquistas</Text>
@@ -341,7 +347,7 @@ function MainApp({ onExit }: { onExit: () => Promise<void> }) {
           {tab === 'Estudo' && <StudyScreen classId={student.classId} userName={student.name} />}
           {tab === 'Presença' && <AttendanceScreen classId={student.classId} userName={student.name} />}
           {tab === 'Quiz' && <QuizScreen />}
-          {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} onExit={onExit} />}
+          {tab === 'Mais' && <ProfileScreen name={student.name} className={student.className} districtId={student.districtId} onExit={onExit} />}
         </ScrollView>
         <View style={styles.nav}>
           {tabs.map((item) => {
@@ -592,6 +598,9 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const [churchName, setChurchName] = useState('Alto do Guarani');
   const [className, setClassName] = useState('Base Cordilheira');
   const [structureBusy, setStructureBusy] = useState(false);
+  const [eventLocation, setEventLocation] = useState('Alto do Guarani');
+  const [eventDate, setEventDate] = useState('16 de agosto · 15h');
+  const [districtEvents, setDistrictEvents] = useState<DistrictEvent[]>([]);
   const [structures, setStructures] = useState<StructureItem[]>([]);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar');
@@ -602,6 +611,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isStructure = title.includes('Classes') || title.includes('Distritos') || title.includes('Igrejas') || title.includes('coordenadores');
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
+  useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   const approvalType: ApprovalType | null = title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
@@ -641,6 +651,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
     try {
       if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
       if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Quiz semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: [{ prompt: question, options: ['Josué', 'Daniel', 'Davi', 'Samuel'], correctIndex: 0 }] });
+      if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
@@ -689,8 +700,8 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         <Pressable style={styles.exportButton} onPress={exportReport}><Text style={styles.exportButtonText}>⇩ Exportar relatório em PDF</Text></Pressable>
       </>}
       {isEvent && <>
-        <View style={styles.eventCard}><View style={styles.eventDate}><Text style={styles.eventDay}>16</Text><Text style={styles.eventMonth}>AGO</Text></View><View style={styles.flex}><Text style={styles.eventTitle}>Conexão Distrital</Text><Text style={styles.eventCopy}>IASD Central · 15h às 18h</Text><Text style={styles.eventPeople}>186 participantes confirmados</Text></View></View>
-        <View style={styles.formCard}><AuthField label="Nome do encontro" placeholder="Ex.: Conexão Distrital" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Local" placeholder="Igreja ou endereço" value="IASD Central" onChangeText={() => {}} /><Pressable style={styles.addQuestion}><Text style={styles.addQuestionText}>＋ Criar novo encontro</Text></Pressable></View>
+        {districtEvents.map(event => <View key={event.id} style={styles.eventCard}><View style={styles.eventDate}><Text style={styles.eventDay}>◉</Text></View><View style={styles.flex}><Text style={styles.eventTitle}>{event.title}</Text><Text style={styles.eventCopy}>{event.location} · {event.dateLabel}</Text></View></View>)}
+        <View style={styles.formCard}><AuthField label="Nome do encontro" placeholder="Ex.: Conexão Distrital" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Local" placeholder="Igreja ou endereço" value={eventLocation} onChangeText={setEventLocation} /><AuthField label="Data e horário" placeholder="Ex.: 16 de agosto · 15h" value={eventDate} onChangeText={setEventDate} /></View>
       </>}
       {isStructure && <>
         {structures.map(item => <View key={`${item.kind}-${item.id}`} style={styles.structureCard}><View style={styles.structureIcon}><Text style={styles.structureIconText}>{item.kind === 'district' ? '⌘' : item.kind === 'church' ? '⌂' : '◆'}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.detail}</Text></View></View>)}
