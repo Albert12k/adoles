@@ -52,6 +52,7 @@ const quizQuestionTemplates: QuizQuestionDraft[] = [
   { type: 'open', prompt: 'Conte uma situação em que você pode praticar coragem nesta semana.', options: [], correctAnswer: 'avaliação do diretor' },
 ];
 const quizTypeLabels: Record<QuizQuestionDraft['type'], string> = { multiple_choice: '🎯 Múltipla escolha', true_false: '⚡ Verdadeiro ou falso', assertion_reason: '🧩 Afirmação + complemento', open: '✍️ Questão aberta', identify_false: '🔎 Identifique a falsa' };
+const nextSaturdayAt = () => { const date = new Date(); const days = (6 - date.getDay() + 7) % 7 || 7; date.setDate(date.getDate() + days); date.setHours(0, 0, 0, 0); return date.getTime(); };
 
 const colors = {
   ink: '#152420',
@@ -739,6 +740,9 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [saved, setSaved] = useState(false);
   const [lessonTitle, setLessonTitle] = useState('Escolhas que transformam');
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestionDraft[]>(quizQuestionTemplates);
+  const [quizTitle, setQuizTitle] = useState('Jornada bíblica semanal');
+  const [quizReleaseMode, setQuizReleaseMode] = useState<'now' | 'saturday'>('saturday');
+  const [quizDurationDays, setQuizDurationDays] = useState(7);
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
@@ -831,12 +835,13 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
     setActionError('');
     try {
       if (isQuiz) {
+        if (!quizTitle.trim()) throw new Error('Informe um título para o quiz.');
         if (!quizQuestions.length) throw new Error('Adicione pelo menos uma fase ao quiz.');
         const invalid = quizQuestions.find(item => !item.prompt.trim() || (item.type !== 'open' && (item.options.length < 2 || item.options.some(option => !option.trim()) || typeof item.correctAnswer !== 'number' || item.correctAnswer < 0 || item.correctAnswer >= item.options.length)));
         if (invalid) throw new Error('Revise os enunciados, alternativas e gabaritos antes de publicar.');
       }
       if (firebaseEnabled && isContent) await publishContent({ classId: selectedClassId, title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
-      if (firebaseEnabled && isQuiz) await publishQuizContent({ classId: selectedClassId, title: 'Jornada bíblica semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: quizQuestions });
+      if (firebaseEnabled && isQuiz) { const releaseAt = quizReleaseMode === 'now' ? Date.now() : nextSaturdayAt(); await publishQuizContent({ classId: selectedClassId, title: quizTitle.trim(), releaseAt, closesAt: releaseAt + quizDurationDays * 24 * 60 * 60 * 1000, questions: quizQuestions }); setMemberNotice(quizReleaseMode === 'now' ? 'Quiz publicado para a base' : 'Quiz agendado para o próximo sábado'); }
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(selectedClassId); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       if (firebaseEnabled && isChallengeCreation) { await submitClassChallenge({ classId: selectedClassId, title: lessonTitle, description: challengeDescription, evidence: challengeEvidence, bonusPoints: Number(challengePoints) || 100 }); setMemberNotice('Desafio enviado ao coordenador para validação'); }
@@ -880,6 +885,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Publicar agora</Text><Text style={styles.manageCopy}>A turma receberá uma notificação</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isQuiz && <>
+        <View style={styles.formCard}><AuthField label="Título do quiz" placeholder="Ex.: Jornada de Josué" value={quizTitle} onChangeText={setQuizTitle} /><Text style={styles.authLabel}>Quando liberar?</Text><View style={styles.scopeWrap}>{([['now', 'Agora'], ['saturday', 'Próximo sábado · 00h']] as const).map(([value, label]) => <Pressable key={value} style={[styles.scopeChip, quizReleaseMode === value && styles.scopeChipActive]} onPress={() => setQuizReleaseMode(value)}><Text style={[styles.scopeChipText, quizReleaseMode === value && styles.scopeChipTextActive]}>{label}</Text></Pressable>)}</View><Text style={[styles.authLabel, { marginTop: 14 }]}>Prazo para responder</Text><View style={styles.scopeWrap}>{[3, 7, 14].map(days => <Pressable key={days} style={[styles.scopeChip, quizDurationDays === days && styles.scopeChipActive]} onPress={() => setQuizDurationDays(days)}><Text style={[styles.scopeChipText, quizDurationDays === days && styles.scopeChipTextActive]}>{days} dias</Text></Pressable>)}</View></View>
         <View style={styles.formCard}><Text style={styles.manageTitle}>Jornada com {quizQuestions.length} fases</Text><Text style={styles.manageCopy}>Misture formatos para manter o quiz dinâmico, reflexivo e divertido.</Text></View>
         {quizQuestions.map((item, questionIndex) => <View key={`${item.type}_${questionIndex}`} style={styles.formCard}>
           <View style={styles.phaseControls}><Pill tone={questionIndex % 2 ? 'teal' : 'coral'}>FASE {questionIndex + 1} · {quizTypeLabels[item.type].toUpperCase()}</Pill><View style={styles.phaseButtons}><Pressable disabled={questionIndex === 0} onPress={() => setQuizQuestions(items => { const copy = [...items]; [copy[questionIndex - 1], copy[questionIndex]] = [copy[questionIndex], copy[questionIndex - 1]]; return copy; })}><Text style={[styles.phaseButtonText, questionIndex === 0 && styles.phaseButtonDisabled]}>↑</Text></Pressable><Pressable disabled={questionIndex === quizQuestions.length - 1} onPress={() => setQuizQuestions(items => { const copy = [...items]; [copy[questionIndex + 1], copy[questionIndex]] = [copy[questionIndex], copy[questionIndex + 1]]; return copy; })}><Text style={[styles.phaseButtonText, questionIndex === quizQuestions.length - 1 && styles.phaseButtonDisabled]}>↓</Text></Pressable><Pressable onPress={() => setQuizQuestions(items => items.filter((_, index) => index !== questionIndex))}><Text style={styles.phaseRemoveText}>Remover</Text></Pressable></View></View>
@@ -889,7 +895,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
           {item.type === 'open' && <Text style={styles.manageCopy}>A resposta será analisada manualmente pelo diretor.</Text>}
         </View>)}
         <Text style={styles.sectionTitle}>Adicionar nova fase</Text><View style={styles.quizTypeGrid}>{quizQuestionTemplates.map(template => <Pressable key={`add-${template.type}`} style={styles.quizTypeButton} onPress={() => setQuizQuestions(items => [...items, { ...template, options: [...template.options] }])}><Text style={styles.quizTypeText}>＋ {quizTypeLabels[template.type]}</Text></Pressable>)}</View>
-        <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Liberar no sábado</Text><Text style={styles.manageCopy}>Abertura automática às 00h</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
+        <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>RESUMO DA PUBLICAÇÃO</Text><Text style={styles.manageCopy}>{quizTitle || 'Quiz sem título'} · {quizQuestions.length} fase(s)</Text><Text style={[styles.cardCaption, { color: colors.white }]}>{quizReleaseMode === 'now' ? 'Liberação imediata' : `Agendado para ${new Date(nextSaturdayAt()).toLocaleDateString('pt-BR')} às 00h`} · encerra após {quizDurationDays} dias</Text></View>
       </>}
       {isQuizRanking && <View style={styles.formCard}><Text style={styles.pageEyebrow}>CONTROLE DO DIRETOR</Text><Text style={styles.pageTitle}>Publique quando a turma estiver reunida.</Text><Text style={styles.pageIntro}>As notas continuam privadas até você liberar. Ao publicar, todos verão o ranking semanal ao mesmo tempo.</Text><View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>STATUS ATUAL</Text><Text style={styles.inviteCode}>🔒 PRIVADO</Text><Text style={styles.cardCaption}>Corrija todas as respostas antes de liberar o placar.</Text></View></View>}
       {isPeriodClosure && <PeriodClosurePanel selectedClassId={selectedClassId} />}
@@ -932,7 +938,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
         {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
         {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
-      {!isApproval && !isReport && !isStructure && !isCoordinatorInvites && !isPeriodClosure && !isLeadershipHistory && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isPresenceTheme ? 'Aplicar tema à base' : isClassActivity ? 'Publicar atividade' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && !isCoordinatorInvites && !isPeriodClosure && !isLeadershipHistory && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isPresenceTheme ? 'Aplicar tema à base' : isClassActivity ? 'Publicar atividade' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? quizReleaseMode === 'now' ? 'Publicar quiz agora' : 'Agendar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }

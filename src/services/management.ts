@@ -67,7 +67,8 @@ export async function publishQuizContent(input: {
   batch.set(quizRef, { classId, title: input.title, ...week, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ type, prompt, options }) => ({ type, prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
   batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, answers: input.questions.map(item => item.correctAnswer), types: input.questions.map(item => item.type), createdBy: auth.currentUser.uid });
   await batch.commit();
-  await notifyClass(classId, 'quiz', 'Novo quiz semanal', `${input.title} foi publicado para a sua base.`).catch(() => undefined);
+  const scheduled = input.releaseAt > Date.now() + 60000;
+  await notifyClass(classId, 'quiz', scheduled ? 'Quiz semanal programado' : 'Novo quiz semanal', scheduled ? `${input.title} será liberado em breve para a sua base.` : `${input.title} foi publicado para a sua base.`).catch(() => undefined);
   return { quizId: quizRef.id };
 }
 
