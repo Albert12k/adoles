@@ -9,6 +9,7 @@
     ,{ "collectionGroup": "quizzes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "releaseAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "scores", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
+    ,{ "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "read", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "challenges", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "roleRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "classJoinRequests", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }

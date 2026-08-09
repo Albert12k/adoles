@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
-import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 Notifications.setNotificationHandler({
@@ -24,4 +24,13 @@ export async function registerPushNotifications() {
 export async function markNotificationRead(notificationId: string) {
   if (!db || !auth?.currentUser || !notificationId) return;
   await updateDoc(doc(db, 'notifications', notificationId), { read: true });
+}
+
+export async function markAllNotificationsRead() {
+  if (!db || !auth?.currentUser) return 0;
+  const result = await getDocs(query(collection(db, 'notifications'), where('userId', '==', auth.currentUser.uid), where('read', '==', false)));
+  const batch = writeBatch(db);
+  result.docs.forEach(item => batch.update(item.ref, { read: true }));
+  await batch.commit();
+  return result.size;
 }

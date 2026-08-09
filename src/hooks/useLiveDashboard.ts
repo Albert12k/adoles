@@ -8,6 +8,7 @@ export interface LiveNotification {
   title: string;
   body: string;
   read: boolean;
+  createdAt?: Date;
 }
 
 export interface LiveRanking {
@@ -25,7 +26,7 @@ export function useLiveDashboard() {
     const user = auth?.currentUser;
     if (!firebaseEnabled || !db || !user) return;
     const unsubscribeNotifications = onSnapshot(query(collection(db, 'notifications'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)), snapshot => {
-      setNotifications(snapshot.docs.map(item => ({ id: item.id, ...(item.data() as Omit<LiveNotification, 'id'>) })));
+      setNotifications(snapshot.docs.map(item => ({ id: item.id, ...(item.data() as Omit<LiveNotification, 'id' | 'createdAt'>), createdAt: item.data().createdAt?.toDate?.() })));
     });
     const unsubscribeScores = onSnapshot(query(collection(db, 'scores'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')), snapshot => {
       setPoints(snapshot.docs.reduce((total, item) => total + Number(item.data().points ?? 0), 0));
