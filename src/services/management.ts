@@ -150,7 +150,7 @@ export async function endQuizNow(quizId: string) {
   return { success: true, submittedAttempts: attempts.size, reviewedAttempts: reviewed };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean, options?: { evaluation?: 'excellent' | 'good' | 'revise'; feedback?: string }) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean, options?: { evaluation?: 'excellent' | 'good' | 'revise'; feedback?: string; attendanceNote?: string }) {
   if (type === 'leadershipTransfer') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');
     let requestData: Record<string, any> = {};
@@ -231,12 +231,15 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   }
   if (type === 'attendance') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar a presença.');
+    let attendanceUserId = ''; let attendanceClassId = '';
     await runTransaction(db, async transaction => {
       const recordRef = doc(db!, 'attendance', itemId);
       const record = await transaction.get(recordRef);
       if (!record.exists()) throw new Error('Registro de presença não encontrado.');
-      transaction.update(recordRef, { status: approved ? 'approved' : 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      attendanceUserId = String(record.data().userId ?? ''); attendanceClassId = String(record.data().classId ?? '');
+      transaction.update(recordRef, { status: approved ? 'approved' : 'rejected', reviewNote: options?.attendanceNote?.trim() || (approved ? 'Presença confirmada pelo diretor.' : 'A foto não permitiu confirmar a presença.'), reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
+    if (attendanceUserId) await notifyUser(attendanceUserId, attendanceClassId, 'presenca', approved ? 'Presença confirmada' : 'Presença precisa de nova foto', approved ? 'Sua presença foi aprovada pelo diretor.' : options?.attendanceNote?.trim() || 'Confira a orientação do diretor e envie outra foto.').catch(() => undefined);
     return { status: approved ? 'approved' : 'rejected' };
   }
   if (type === 'studyRecord') {

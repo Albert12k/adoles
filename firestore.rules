@@ -175,7 +175,7 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid && memberOf(request.resource.data.classId);
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
       allow update: if (directorOf(resource.data.classId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedBy', 'reviewedAt']) &&
         request.resource.data.reviewedBy == request.auth.uid) ||
         (signedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'rejected' &&
           request.resource.data.status == 'pending' && request.resource.data.userId == resource.data.userId &&
