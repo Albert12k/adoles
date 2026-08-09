@@ -54,7 +54,7 @@ export async function listWeeklyContent(classId: string) {
     orderBy('publishedAt', 'desc'),
     limit(13),
   ));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as { title?: string }) }));
+  return result.docs.filter(item => item.data().archived !== true).map(item => ({ id: item.id, ...(item.data() as { title?: string }) }));
 }
 
 export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & { userName?: string }) {

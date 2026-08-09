@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   ActivityIndicator,
   Platform,
   Pressable,
@@ -17,7 +18,7 @@ import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUse
 import type { RegistrationOptions } from './src/services/auth';
 import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers, subscribeToQuizAvailability, validateClassInviteCode } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
-import { endQuizNow, listManagedQuizzes, manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem, sendQuizReminder, subscribeQuizParticipation, type ManagedQuiz } from './src/services/management';
+import { archiveWeeklyContent, endQuizNow, listManagedContent, listManagedQuizzes, manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem, sendQuizReminder, subscribeQuizParticipation, type ManagedContent, type ManagedQuiz } from './src/services/management';
 import { exportLeadershipReport, loadLeadershipReport, type LeadershipReport } from './src/services/report';
 import { selectAndUploadContentPdf } from './src/services/media';
 import { markNotificationRead, registerPushNotifications } from './src/services/notifications';
@@ -167,11 +168,11 @@ function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavi
 function StudyScreen({ classId, userName }: { classId: string; userName: string }) {
   const [completed, setCompleted] = useState(false);
   const [summary, setSummary] = useState('');
-  const [content, setContent] = useState<{ id: string; title?: string } | null>(null);
+  const [content, setContent] = useState<{ id: string; title?: string; lessonPdfUrl?: string; bookPdfUrl?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [studyError, setStudyError] = useState('');
   const [feedback, setFeedback] = useState('');
-  useEffect(() => { if (classId) listWeeklyContent(classId).then(items => setContent((items[0] as { id: string; title?: string } | undefined) ?? null)).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) listWeeklyContent(classId).then(items => setContent((items[0] as { id: string; title?: string; lessonPdfUrl?: string; bookPdfUrl?: string } | undefined) ?? null)).catch(() => undefined); }, [classId]);
   useEffect(() => { if (auth?.currentUser) listMyStudyRecords(auth.currentUser.uid).then(items => { const reviewed = items.find(item => item.feedbackVisible); if (reviewed) setFeedback(String(reviewed.feedback ?? 'Resumo avaliado pelo diretor.')); }).catch(() => undefined); }, [completed]);
   const registerStudy = async () => {
     if (!firebaseEnabled) return setCompleted(!completed);
@@ -191,11 +192,11 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
       <Text style={styles.pageTitle}>Cresça um pouco a cada dia.</Text>
       <Text style={styles.pageIntro}>Registre o que você aprendeu. Suas anotações são privadas.</Text>
       {[
-        ['📖', 'Lição', content?.title ?? 'Aguardando publicação do diretor', content ? 'Conteúdo da semana' : 'Ainda não disponível', '#F8E8C8'],
-        ['✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9'],
-        ['▣', 'Livro', 'O maior discurso de Cristo', 'Capítulo 3', '#FBE0D6'],
-      ].map(([icon, title, subtitle, meta, bg]) => (
-        <Pressable key={title} style={styles.studyCard}>
+        ['📖', 'Lição', content?.title ?? 'Aguardando publicação do diretor', content?.lessonPdfUrl ? 'Toque para abrir o PDF' : 'Ainda não disponível', '#F8E8C8', content?.lessonPdfUrl],
+        ['✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9', ''],
+        ['▣', 'Livro', content?.title ?? 'Livro da semana', content?.bookPdfUrl ? 'Toque para abrir o PDF' : 'Ainda não disponível', '#FBE0D6', content?.bookPdfUrl],
+      ].map(([icon, title, subtitle, meta, bg, url]) => (
+        <Pressable key={title} style={styles.studyCard} onPress={() => { if (url) Linking.openURL(url).catch(() => setStudyError('Não foi possível abrir este PDF.')); }}>
           <View style={[styles.studyIcon, { backgroundColor: bg }]}><Text style={styles.studyEmoji}>{icon}</Text></View>
           <View style={styles.flex}>
             <Text style={styles.studyLabel}>{title}</Text>
@@ -749,7 +750,11 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
-  const [uploadedPdf, setUploadedPdf] = useState<{ name: string; url: string } | null>(null);
+  const [lessonPdf, setLessonPdf] = useState<{ name: string; url: string } | null>(null);
+  const [bookPdf, setBookPdf] = useState<{ name: string; url: string } | null>(null);
+  const [contentWeek, setContentWeek] = useState(Math.min(13, Math.max(1, Math.ceil((new Date().getDate() + new Date().getDay()) / 7))));
+  const [contentQuarter, setContentQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1);
+  const [managedContent, setManagedContent] = useState<ManagedContent[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [districtName, setDistrictName] = useState('Central');
   const [churchName, setChurchName] = useState('Alto do Guarani');
@@ -795,6 +800,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const isLeadershipHistory = title === 'Histórico de lideranças';
   const leadershipHistory = useLeadershipHistory(isLeadershipHistory);
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
+  useEffect(() => { if (isContent) listManagedContent(selectedClassId).then(setManagedContent).catch(() => undefined); }, [isContent, selectedClassId]);
   useEffect(() => { if (isQuiz) listManagedQuizzes(selectedClassId).then(setManagedQuizzes).catch(() => undefined); }, [isQuiz, selectedClassId]);
   useEffect(() => { if (!isQuiz || !selectedClassId) return; return subscribeQuizParticipation(selectedClassId, () => listManagedQuizzes(selectedClassId).then(setManagedQuizzes).catch(() => undefined)); }, [isQuiz, selectedClassId]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
@@ -845,7 +851,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
         const invalid = quizQuestions.find(item => !item.prompt.trim() || (item.type !== 'open' && (item.options.length < 2 || item.options.some(option => !option.trim()) || typeof item.correctAnswer !== 'number' || item.correctAnswer < 0 || item.correctAnswer >= item.options.length)));
         if (invalid) throw new Error('Revise os enunciados, alternativas e gabaritos antes de publicar.');
       }
-      if (firebaseEnabled && isContent) await publishContent({ classId: selectedClassId, title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
+      if (firebaseEnabled && isContent) { if (!lessonPdf && !bookPdf) throw new Error('Adicione o PDF da lição, do livro ou ambos.'); await publishContent({ classId: selectedClassId, title: lessonTitle, lessonPdfUrl: lessonPdf?.url, bookPdfUrl: bookPdf?.url, week: contentWeek, quarter: contentQuarter, year: new Date().getFullYear() }); setManagedContent(await listManagedContent(selectedClassId)); setMemberNotice('Conteúdo semanal publicado'); }
       if (firebaseEnabled && isQuiz) { const releaseAt = quizReleaseMode === 'now' ? Date.now() : nextSaturdayAt(); await publishQuizContent({ classId: selectedClassId, title: quizTitle.trim(), releaseAt, closesAt: releaseAt + quizDurationDays * 24 * 60 * 60 * 1000, questions: quizQuestions }); setManagedQuizzes(await listManagedQuizzes(selectedClassId)); setMemberNotice(quizReleaseMode === 'now' ? 'Quiz publicado para a base' : 'Quiz agendado para o próximo sábado'); }
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(selectedClassId); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
@@ -855,10 +861,10 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
-  const uploadPdf = async () => {
-    if (!firebaseEnabled) return setUploadedPdf({ name: 'licao-demonstrativa.pdf', url: 'demo' });
+  const uploadPdf = async (kind: 'lesson' | 'book') => {
+    if (!firebaseEnabled) { const file = { name: kind === 'lesson' ? 'licao-demonstrativa.pdf' : 'livro-demonstrativo.pdf', url: 'demo' }; return kind === 'lesson' ? setLessonPdf(file) : setBookPdf(file); }
     setActionError('');
-    try { const file = await selectAndUploadContentPdf(); if (file) setUploadedPdf(file); }
+    try { const file = await selectAndUploadContentPdf(); if (file) kind === 'lesson' ? setLessonPdf(file) : setBookPdf(file); }
     catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível enviar o PDF.'); }
   };
   const exportReport = async () => {
@@ -886,8 +892,10 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
       <Text style={styles.pageIntro}>{isApproval ? 'Analise os itens pendentes e registre sua decisão.' : 'Prepare as informações que ficarão disponíveis para a turma.'}</Text>
       {isContent && <>
         <AuthField label="Título da lição" placeholder="Título da semana" value={lessonTitle} onChangeText={setLessonTitle} />
-        <Pressable style={styles.uploadBox} onPress={uploadPdf}><Text style={styles.uploadIcon}>{uploadedPdf ? '✓' : '＋'}</Text><Text style={styles.uploadTitle}>{uploadedPdf?.name ?? 'Adicionar arquivo'}</Text><Text style={styles.uploadCopy}>{uploadedPdf ? 'PDF pronto para publicação' : 'PDF da lição ou do livro · até 25 MB'}</Text></Pressable>
-        <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Publicar agora</Text><Text style={styles.manageCopy}>A turma receberá uma notificação</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
+        <View style={styles.scopeSection}><Text style={styles.authLabel}>Trimestre</Text><View style={styles.scopeWrap}>{[1, 2, 3, 4].map(quarter => <Pressable key={quarter} style={[styles.scopeChip, contentQuarter === quarter && styles.scopeChipActive]} onPress={() => setContentQuarter(quarter)}><Text style={[styles.scopeChipText, contentQuarter === quarter && styles.scopeChipTextActive]}>{quarter}º trimestre</Text></Pressable>)}</View><Text style={[styles.authLabel, { marginTop: 12 }]}>Semana</Text><View style={styles.scopeWrap}>{Array.from({ length: 13 }, (_, index) => index + 1).map(week => <Pressable key={week} style={[styles.scopeChip, contentWeek === week && styles.scopeChipActive]} onPress={() => setContentWeek(week)}><Text style={[styles.scopeChipText, contentWeek === week && styles.scopeChipTextActive]}>S{week}</Text></Pressable>)}</View></View>
+        <Pressable style={styles.uploadBox} onPress={() => uploadPdf('lesson')}><Text style={styles.uploadIcon}>{lessonPdf ? '✓' : '＋'}</Text><Text style={styles.uploadTitle}>{lessonPdf?.name ?? 'Adicionar PDF da lição'}</Text><Text style={styles.uploadCopy}>{lessonPdf ? 'Lição pronta para publicação' : 'Arquivo opcional · até 25 MB'}</Text></Pressable>
+        <Pressable style={styles.uploadBox} onPress={() => uploadPdf('book')}><Text style={styles.uploadIcon}>{bookPdf ? '✓' : '＋'}</Text><Text style={styles.uploadTitle}>{bookPdf?.name ?? 'Adicionar PDF do livro'}</Text><Text style={styles.uploadCopy}>{bookPdf ? 'Livro pronto para publicação' : 'Arquivo opcional · até 25 MB'}</Text></Pressable>
+        {managedContent.length > 0 && <><Text style={styles.sectionTitle}>Histórico publicado</Text>{managedContent.map(item => <View key={item.id} style={styles.formCard}><View style={styles.weekRow}><View style={styles.flex}><Text style={styles.manageTitle}>{item.title}</Text><Text style={styles.manageCopy}>T{item.quarter} · Semana {item.week} · {item.year} · {item.lessonPdfUrl ? 'lição' : ''}{item.lessonPdfUrl && item.bookPdfUrl ? ' + ' : ''}{item.bookPdfUrl ? 'livro' : ''}</Text></View><Pressable onPress={async () => { try { await archiveWeeklyContent(item.id); setManagedContent(await listManagedContent(selectedClassId)); setMemberNotice('Conteúdo arquivado'); } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível arquivar.'); } }}><Text style={styles.phaseRemoveText}>Arquivar</Text></Pressable></View></View>)}</>}
       </>}
       {isQuiz && <>
         {managedQuizzes.some(item => item.active) && <><Text style={styles.sectionTitle}>Quizzes ativos ou agendados</Text>{managedQuizzes.filter(item => item.active).map(item => <View key={item.id} style={styles.formCard}><View style={styles.weekRow}><View style={styles.flex}><Text style={styles.manageTitle}>{item.title}</Text><Text style={styles.manageCopy}>{item.releaseAt > Date.now() ? `Agendado para ${new Date(item.releaseAt).toLocaleDateString('pt-BR')}` : 'Disponível agora'} · encerramento previsto em {new Date(item.closesAt).toLocaleDateString('pt-BR')}</Text></View><Pill tone={item.releaseAt > Date.now() ? 'gold' : 'teal'}>{item.releaseAt > Date.now() ? 'AGENDADO' : 'ABERTO'}</Pill></View>{quizToEnd === item.id ? <View style={styles.warningCard}><Text style={styles.manageTitle}>Encerrar imediatamente?</Text><Text style={styles.manageCopy}>Quem estiver respondendo será interrompido e não poderá enviar as respostas.</Text><View style={styles.memberActions}><Pressable style={styles.memberDangerButton} onPress={async () => { try { const result = await endQuizNow(item.id); setQuizToEnd(''); setManagedQuizzes(await listManagedQuizzes(selectedClassId)); setMemberNotice(`Quiz encerrado · ${result.submittedAttempts} resposta(s) recebida(s)`); } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível encerrar o quiz.'); } }}><Text style={styles.memberDangerText}>Sim, encerrar agora</Text></Pressable><Pressable style={styles.memberActionButton} onPress={() => setQuizToEnd('')}><Text style={styles.memberActionText}>Cancelar</Text></Pressable></View></View> : <Pressable style={styles.memberDangerButton} onPress={() => setQuizToEnd(item.id)}><Text style={styles.memberDangerText}>Encerrar quiz agora</Text></Pressable>}</View>)}</>}

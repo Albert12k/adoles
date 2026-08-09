@@ -41,10 +41,25 @@ export async function publishContent(input: { title: string; classId?: string; l
   const reference = await addDoc(collection(db, 'weeklyContent'), {
     classId, title: input.title.trim(), lessonPdfUrl: input.lessonPdfUrl ?? null, bookPdfUrl: input.bookPdfUrl ?? null,
     week: input.week ?? 1, quarter: input.quarter ?? 1, year: input.year ?? new Date().getFullYear(),
-    createdBy: auth.currentUser.uid, publishedAt: serverTimestamp(),
+    archived: false, createdBy: auth.currentUser.uid, publishedAt: serverTimestamp(),
   });
   await notifyClass(classId, 'conteudo', 'Novo conteúdo semanal', `${input.title.trim()} já está disponível para estudo.`).catch(() => undefined);
   return { contentId: reference.id };
+}
+
+export interface ManagedContent { id: string; title: string; week: number; quarter: number; year: number; lessonPdfUrl?: string; bookPdfUrl?: string; }
+export async function listManagedContent(selectedClassId?: string): Promise<ManagedContent[]> {
+  if (!db || !auth?.currentUser) return [];
+  let classId = selectedClassId;
+  if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
+  if (!classId) return [];
+  const result = await getDocs(query(collection(db, 'weeklyContent'), where('classId', '==', classId), limit(30)));
+  return result.docs.filter(item => item.data().archived !== true).map(item => ({ id: item.id, title: item.data().title ?? 'Conteúdo semanal', week: Number(item.data().week ?? 1), quarter: Number(item.data().quarter ?? 1), year: Number(item.data().year ?? new Date().getFullYear()), lessonPdfUrl: item.data().lessonPdfUrl, bookPdfUrl: item.data().bookPdfUrl })).sort((a, b) => b.year - a.year || b.quarter - a.quarter || b.week - a.week);
+}
+
+export async function archiveWeeklyContent(contentId: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para arquivar o conteúdo.');
+  await updateDoc(doc(db, 'weeklyContent', contentId), { archived: true, archivedBy: auth.currentUser.uid, archivedAt: serverTimestamp() });
 }
 
 export async function publishQuizContent(input: {
