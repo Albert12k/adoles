@@ -53,7 +53,17 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt', itemId: string, approved: boolean) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard', itemId: string, approved: boolean) {
+  if (type === 'flashcard') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para moderar o flashcard.');
+    await runTransaction(db, async transaction => {
+      const cardRef = doc(db!, 'flashcards', itemId);
+      const card = await transaction.get(cardRef);
+      if (!card.exists()) throw new Error('Flashcard não encontrado.');
+      transaction.update(cardRef, { status: approved ? 'published' : 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+    });
+    return { status: approved ? 'published' : 'rejected' };
+  }
   if (type === 'quizAttempt') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para corrigir o quiz.');
     await runTransaction(db, async transaction => {

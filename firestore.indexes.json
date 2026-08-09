@@ -22,6 +22,7 @@
     ,{ "collectionGroup": "quizAttempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "quizId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "quizRankings", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "published", "order": "ASCENDING" }, { "fieldPath": "publishedAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "periodClosures", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "closedAt", "order": "DESCENDING" }] }
+    ,{ "collectionGroup": "flashcards", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

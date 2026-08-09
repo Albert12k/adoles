@@ -23,6 +23,7 @@ import { selectAndUploadContentPdf } from './src/services/media';
 import { registerPushNotifications } from './src/services/notifications';
 import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadershipData';
 import type { ApprovalType } from './src/hooks/useLeadershipData';
+import { createFlashcard, listPublishedFlashcards, type Flashcard } from './src/services/flashcards';
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
@@ -300,9 +301,23 @@ function ProfileScreen({ name, className, classId, districtId, onExit }: { name:
   const [confirmedEvents, setConfirmedEvents] = useState<string[]>([]);
   const [rankingHistory, setRankingHistory] = useState<Array<{ id: string; weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> }>>([]);
   const [periodHistory, setPeriodHistory] = useState<PeriodClosure[]>([]);
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [flashFront, setFlashFront] = useState('');
+  const [flashBack, setFlashBack] = useState('');
+  const [revealedCards, setRevealedCards] = useState<string[]>([]);
+  const [flashNotice, setFlashNotice] = useState('');
   useEffect(() => { if (districtId) listDistrictEvents(districtId).then(setEvents).catch(() => undefined); }, [districtId]);
   useEffect(() => { if (classId) listQuizRankingHistory(classId).then(setRankingHistory).catch(() => undefined); }, [classId]);
   useEffect(() => { if (classId) listPeriodClosures(classId).then(setPeriodHistory).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) listPublishedFlashcards(classId).then(setFlashcards).catch(() => undefined); }, [classId]);
+  const submitFlashcard = async () => {
+    setFlashNotice('');
+    if (flashFront.trim().length < 3 || flashBack.trim().length < 3) return setFlashNotice('Preencha a frente e a resposta do cartão.');
+    try {
+      await createFlashcard({ classId, userName: name, front: flashFront, back: flashBack });
+      setFlashFront(''); setFlashBack(''); setFlashNotice('Cartão enviado! O diretor vai revisar antes de publicar.');
+    } catch (error) { setFlashNotice(error instanceof Error ? error.message : 'Não foi possível enviar o cartão.'); }
+  };
   const live = useLiveDashboard();
   if (communityView !== 'hub') {
     const content = {
@@ -325,7 +340,12 @@ function ProfileScreen({ name, className, classId, districtId, onExit }: { name:
         {communityView === 'mural' && <>
           {[['🏆', 'Marina conquistou “Leitora do mês”', 'Há 2 horas · 12 reações'], ['🔥', 'João completou 6 semanas seguidas', 'Ontem · 8 reações'], ['◆', 'Desafio solidário aprovado!', 'A Base Geração ganhou +100 pontos']].map(([icon, title, copy]) => <View key={title} style={styles.feedCard}><Text style={styles.feedEmoji}>{icon}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text><Text style={styles.reactions}>♥  🙌  ⚡</Text></View></View>)}
         </>}
-        {communityView === 'flashcards' && <View style={styles.flashGrid}>{[['A fé cresce quando é exercitada.', '#FFF1A8'], ['Josué 1:9 — coragem não é ausência de medo.', '#CFEDE5'], ['Servir também é uma forma de adorar.', '#FFD9CE'], ['Pergunta para o sábado: como aplicar isso?', '#DCE0FA']].map(([text, bg], index) => <View key={text} style={[styles.flashCard, { backgroundColor: bg, transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>NOTA {index + 1}</Text><Text style={styles.flashText}>{text}</Text></View>)}</View>}
+        {communityView === 'flashcards' && <>
+          <View style={styles.formCard}><Text style={styles.sectionTitle}>Crie um cartão para a turma</Text><Text style={styles.manageCopy}>Transforme algo importante do estudo em uma pergunta e resposta curta.</Text><AuthField label="Frente do cartão" placeholder="Ex.: Quem liderou o povo depois de Moisés?" value={flashFront} onChangeText={setFlashFront} /><AuthField label="Resposta" placeholder="Ex.: Josué" value={flashBack} onChangeText={setFlashBack} /><Pressable style={styles.primaryButton} onPress={submitFlashcard}><Text style={styles.primaryButtonText}>Enviar para moderação</Text></Pressable>{flashNotice !== '' && <Text style={styles.manageCopy}>{flashNotice}</Text>}</View>
+          <Text style={styles.sectionTitle}>Baralho da turma</Text>
+          {flashcards.length === 0 && <Text style={styles.pageIntro}>Os cartões aparecerão aqui depois que o diretor aprovar.</Text>}
+          <View style={styles.flashGrid}>{flashcards.map((card, index) => { const revealed = revealedCards.includes(card.id); return <Pressable key={card.id} onPress={() => setRevealedCards(items => revealed ? items.filter(id => id !== card.id) : [...items, card.id])} style={[styles.flashCard, { backgroundColor: ['#FFF1A8', '#CFEDE5', '#FFD9CE', '#DCE0FA'][index % 4], transform: [{ rotate: index % 2 ? '2deg' : '-2deg' }] }]}><Text style={styles.flashLabel}>{revealed ? 'RESPOSTA' : 'TOQUE PARA REVELAR'}</Text><Text style={styles.flashText}>{revealed ? card.back : card.front}</Text><Text style={styles.cardCaption}>por {card.userName}</Text></Pressable>; })}</View>
+        </>}
         {communityView === 'desafios' && <View style={styles.challengeCard}><Pill tone="coral">JULHO · EM ANDAMENTO</Pill><Text style={styles.challengeTitle}>Corrente do bem</Text><Text style={styles.challengeCopy}>Como turma, realizem uma ação de cuidado na comunidade e registrem uma foto.</Text><View style={styles.challengeMeta}><Text style={styles.challengePoints}>+100 pontos</Text><Text style={styles.cardCaption}>Termina em 6 dias</Text></View><Progress value={70} color={colors.coral} /><Text style={styles.challengeStatus}>Evidência enviada pelo diretor · aguardando aprovação</Text></View>}
         {communityView === 'hall' && <>{periodHistory.length === 0 && <Text style={styles.pageIntro}>O Hall da Fama será aberto após o primeiro encerramento de trimestre.</Text>}{periodHistory.map(period => <View key={period.id} style={styles.formCard}><Text style={styles.sectionTitle}>{period.kind === 'year' ? '🏆 Melhores do ano' : '⭐ Ranking trimestral'}</Text><Text style={styles.manageCopy}>{period.periodLabel}</Text>{period.entries.slice(0, 10).map(entry => <View key={entry.userId} style={styles.hallCard}><Text style={styles.hallIcon}>{entry.position === 1 ? '🥇' : entry.position === 2 ? '🥈' : entry.position === 3 ? '🥉' : '★'}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{entry.position}º · {entry.name}</Text><Text style={styles.manageCopy}>{entry.summaries} resumos · {entry.attendance} presenças · {entry.correctQuizAnswers} acertos</Text></View><Text style={styles.rankPoints}>{entry.points} pts</Text></View>)}</View>)}</>}
         {communityView === 'notificacoes' && <>{(live.notifications.length > 0 ? live.notifications.map(item => [item.type.toUpperCase(), item.title, item.body, item.read ? 'read' : 'unread']) : [['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora', 'unread'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h', 'read'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem', 'read'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias', 'read']]).map(([tag, title, copy, status]) => <View key={`${tag}_${title}`} style={[styles.notificationCard, status === 'unread' && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{status === 'unread' && <View style={styles.unreadDot} />}</View>)}</>}
@@ -674,7 +694,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const [districtEvents, setDistrictEvents] = useState<DistrictEvent[]>([]);
   const [structures, setStructures] = useState<StructureItem[]>([]);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
-  const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir');
+  const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir') || title.includes('Moderar');
   const isContent = title.includes('Conteúdo');
   const isQuiz = title.includes('Quiz');
   const isReport = title.includes('Relatório');
@@ -686,7 +706,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isPeriodClosure = title.includes('Encerrar período');
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
-  const approvalType: ApprovalType | null = title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
+  const approvalType: ApprovalType | null = title.includes('flashcards') ? 'flashcard' : title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
   const displayApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
@@ -829,7 +849,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
       ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', '3'],
       ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', '3'],
-      ['✦', 'Flashcards publicados', 'Moderar cards enviados pela turma', '4'],
+      ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', ''],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
     ]
     : role === 'coordenador'
