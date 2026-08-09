@@ -40,6 +40,7 @@ import { useWeeklyJourney, verseOfTheDay } from './src/hooks/useWeeklyJourney';
 import { cancelCoordinatorInvite, createCoordinatorInvite, listCoordinatorAccounts, listCoordinatorAudit, listCoordinatorInvites, updateCoordinatorAccount, type CoordinatorAccount, type CoordinatorAuditItem, type CoordinatorInvite } from './src/services/coordinatorInvites';
 import { cancelDistrictEvent, cancelEventAttendance, completeDistrictEvent, confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEventFeedback, listDistrictEvents, listMyCompletedEvents, listMyEventRegistrations, promoteNextWaitlisted, remindEventParticipants, setEventCheckIn, submitEventFeedback, updateDistrictEvent, type CompletedEvent, type DistrictEvent, type EventFeedback, type MyEventRegistration } from './src/services/events';
 import { closeCurrentPeriod, exportPeriodClosure, listPeriodClosures, type PeriodClosure, type PeriodKind } from './src/services/periods';
+import { listLeadershipActivity, type ActivityCategory, type LeadershipActivity } from './src/services/activityFeed';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -1008,14 +1009,21 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const [section, setSection] = useState<'painel' | 'gestao' | 'atividade' | 'perfil'>('painel');
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [leadershipActivity, setLeadershipActivity] = useState<LeadershipActivity[]>([]);
+  const [activityFilter, setActivityFilter] = useState<ActivityCategory | 'all'>('all');
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
   const leadership = useLeadershipProfile(role);
   const [activeClassId, setActiveClassId] = useState('');
   useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
   const activeManagedClass = leadership.managedClasses.find(item => item.id === activeClassId) ?? leadership.managedClasses[0];
+  const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
+  useEffect(() => { if (section === 'atividade') refreshActivity(); }, [section, role, activeClassId]);
   const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
   const scope = role === 'diretor' && activeManagedClass ? activeManagedClass.name : leadership.scope;
   const metrics = leadership.metrics.map((item, index) => [item[0], item[1], [colors.tealMedium, colors.gold, colors.coral][index]]);
   const performSignOut = async () => { setSigningOut(true); try { await onExit(); } finally { setSigningOut(false); } };
+  const relativeActivityTime = (date: Date) => { const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000)); if (minutes < 1) return 'agora'; if (minutes < 60) return `há ${minutes} min`; const hours = Math.floor(minutes / 60); if (hours < 24) return `há ${hours}h`; const days = Math.floor(hours / 24); return days === 1 ? 'ontem' : `há ${days} dias`; };
   const actions = role === 'diretor'
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
@@ -1070,12 +1078,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
           </>}
           {role === 'diretor' && leadership.managedClasses.length > 0 && <View style={styles.classSwitcher}><Text style={styles.authLabel}>BASE ATIVA</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{leadership.managedClasses.map(item => <Pressable key={item.id} onPress={() => { setActiveClassId(item.id); setSelectedAction(null); }} style={[styles.classSwitchButton, activeClassId === item.id && styles.classSwitchButtonActive]}><Text style={[styles.classSwitchName, activeClassId === item.id && styles.classSwitchNameActive]}>{item.name}</Text><Text style={styles.classSwitchGroup}>{item.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></Pressable>)}</ScrollView></View>}
           {section === 'gestao' && (selectedAction ? <ManagementDetail title={selectedAction} role={role} selectedClassId={activeClassId} onBack={() => setSelectedAction(null)} /> : <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} onPress={() => setSelectedAction(title)} />)}{role === 'diretor' && <ActionRow icon="♙" title="Gerenciar membros" copy="Convite, lista, transferências e acessos" onPress={() => setSelectedAction('Gerenciar membros')} />}</>)}
-          {section === 'atividade' && <><Text style={styles.pageEyebrow}>ÚLTIMAS ATUALIZAÇÕES</Text><Text style={styles.pageTitle}>Atividade</Text><Text style={styles.pageIntro}>Acompanhe o que aconteceu recentemente.</Text>{[
-            ['✓', 'Presença aprovada', 'Daniel avançou para a semana 7 · há 12 min'],
-            ['★', 'Nova conquista', 'Marina completou 4 semanas de estudo · há 1h'],
-            ['◆', 'Desafio enviado', 'Evidência do desafio de julho · ontem'],
-            ['▤', 'Resumo recebido', '7 novos resumos aguardam avaliação · ontem'],
-          ].map(([icon, title, copy]) => <ActionRow key={title} icon={icon} title={title} copy={copy} />)}</>}
+          {section === 'atividade' && <><Text style={styles.pageEyebrow}>ÚLTIMAS ATUALIZAÇÕES</Text><Text style={styles.pageTitle}>Atividade</Text><Text style={styles.pageIntro}>Acompanhe o que realmente aconteceu no seu alcance de liderança.</Text><View style={styles.scopeWrap}>{(['all', 'cadastro', 'estudo', 'presenca', 'desafio', 'evento', 'lideranca'] as const).map(filter => { const labels = { all: 'Tudo', cadastro: 'Cadastros', estudo: 'Estudos', presenca: 'Presenças', desafio: 'Desafios', evento: 'Encontros', lideranca: 'Liderança' }; return <Pressable key={filter} style={[styles.scopeChip, activityFilter === filter && styles.scopeChipActive]} onPress={() => setActivityFilter(filter)}><Text style={[styles.scopeChipText, activityFilter === filter && styles.scopeChipTextActive]}>{labels[filter]}</Text></Pressable>; })}</View><Pressable style={styles.memberActionButton} disabled={activityLoading} onPress={refreshActivity}><Text style={styles.memberActionText}>{activityLoading ? 'Atualizando...' : '↻ Atualizar histórico'}</Text></Pressable>{activityLoading && <ActivityIndicator color={colors.tealMedium} />}{activityError !== '' && <Text style={styles.authError}>{activityError}</Text>}{!activityLoading && leadershipActivity.filter(item => activityFilter === 'all' || item.category === activityFilter).length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma atividade nesta categoria</Text><Text style={styles.manageCopy}>As novas ações aparecerão aqui automaticamente.</Text></View>}{leadershipActivity.filter(item => activityFilter === 'all' || item.category === activityFilter).map(item => <ActionRow key={item.id} icon={item.icon} title={item.title} copy={`${item.copy} · ${relativeActivityTime(item.occurredAt)}`} />)}</>}
           {section === 'perfil' && <><View style={styles.profileTop}><View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{leadership.name[0]?.toUpperCase() ?? 'U'}</Text></View><Text style={styles.profileName}>{leadership.name}</Text><Text style={styles.profileClass}>{roleName}</Text><Text style={styles.profileStatus}>{scope}</Text></View><ActionRow icon="⚙" title="Configurações" copy="Conta, notificações e privacidade" /><ActionRow icon="?" title="Ajuda" copy="Orientações sobre o aplicativo" /><Pressable style={styles.signOutButton} disabled={signingOut} onPress={performSignOut}><Text style={styles.signOutText}>{signingOut ? 'Saindo...' : 'Sair da conta'}</Text></Pressable></>}
         </ScrollView>
         <View style={styles.nav}>{[
