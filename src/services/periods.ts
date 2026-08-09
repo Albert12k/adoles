@@ -38,7 +38,7 @@ export async function closeCurrentPeriod(kind: PeriodKind, selectedClassId?: str
     const userStudies = studies.docs.filter(item => item.data().userId === userId && inPeriod(item.data().createdAt));
     const userAttendance = attendance.docs.filter(item => item.data().userId === userId && item.data().status === 'approved' && inPeriod(item.data().createdAt));
     const userAttempts = attempts.docs.filter(item => item.data().userId === userId && inPeriod(item.data().createdAt));
-    const userActivities = activityParticipants.docs.filter(item => item.data().userId === userId && item.data().status === 'confirmed' && inPeriod(item.data().confirmedAt));
+    const userActivities = activityParticipants.docs.filter(item => item.data().userId === userId && item.data().status === 'attended' && inPeriod(item.data().reviewedAt));
     const correctQuizAnswers = userAttempts.reduce((total, item) => total + Number(item.data().correctAnswers ?? 0), 0);
     const summaries = userStudies.length;
     const studyPoints = userStudies.reduce((total, item) => total + Number(item.data().score ?? 0), 0);
