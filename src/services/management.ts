@@ -150,7 +150,7 @@ export async function endQuizNow(quizId: string) {
   return { success: true, submittedAttempts: attempts.size, reviewedAttempts: reviewed };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean, options?: { evaluation?: 'excellent' | 'good' | 'revise'; feedback?: string }) {
   if (type === 'leadershipTransfer') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');
     let requestData: Record<string, any> = {};
@@ -247,7 +247,10 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       const record = await transaction.get(recordRef);
       if (!record.exists()) throw new Error('Resumo não encontrado.');
       studyUserId = String(record.data().userId ?? ''); studyClassId = String(record.data().classId ?? '');
-      transaction.update(recordRef, { score: approved ? 20 : 0, feedbackVisible: true, feedback: approved ? 'Resumo analisado pelo diretor. Continue estudando!' : 'Revise o resumo e envie novamente.', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      const evaluation = approved ? options?.evaluation ?? 'good' : 'revise';
+      const score = evaluation === 'excellent' ? 20 : evaluation === 'good' ? 15 : 0;
+      const defaultFeedback = evaluation === 'excellent' ? 'Excelente reflexão! Continue aprofundando seus estudos.' : evaluation === 'good' ? 'Bom resumo. Continue estudando!' : 'Revise o resumo e tente desenvolvê-lo um pouco mais.';
+      transaction.update(recordRef, { score, evaluation, feedbackVisible: true, feedback: options?.feedback?.trim() || defaultFeedback, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
     if (studyUserId) await notifyUser(studyUserId, studyClassId, 'avaliacao', 'Resumo avaliado', approved ? 'Seu resumo foi analisado pelo diretor.' : 'Seu resumo precisa de uma revisão antes de ser concluído.').catch(() => undefined);
     return { status: approved ? 'approved' : 'rejected' };

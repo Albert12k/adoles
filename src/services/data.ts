@@ -73,7 +73,7 @@ export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & {
 export async function listMyStudyRecords(userId: string) {
   const firestore = requireFirestore();
   const result = await getDocs(query(collection(firestore, 'studyRecords'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(10)));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as { source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; feedbackVisible?: boolean; feedback?: string; createdAt?: { toDate?: () => Date } }) }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; score?: number; evaluation?: string; feedbackVisible?: boolean; feedback?: string; createdAt?: { toDate?: () => Date } }) }));
 }
 
 export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {
