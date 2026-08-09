@@ -163,7 +163,12 @@ service cloud.firestore {
     match /studyRecords/{recordId} {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid && memberOf(request.resource.data.classId);
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
-      allow update: if signedIn() && (resource.data.userId == request.auth.uid || directorOf(resource.data.classId));
+      allow update: if signedIn() && ((resource.data.userId == request.auth.uid &&
+        resource.data.evaluation == 'revise' && resource.data.feedbackVisible == true &&
+        request.resource.data.feedbackVisible == false && request.resource.data.evaluation == 'resubmitted' &&
+        request.resource.data.score == 0 && request.resource.data.previousFeedback == resource.data.feedback &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['summary', 'passage', 'feedbackVisible', 'evaluation', 'previousFeedback', 'score', 'revisionCount', 'revisedAt'])) ||
+        directorOf(resource.data.classId));
     }
 
     match /attendance/{recordId} {

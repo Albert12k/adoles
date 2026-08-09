@@ -64,8 +64,12 @@ export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & {
   const recordRef = doc(firestore, 'studyRecords', `${input.userId}_${dayKey}_${input.source}`);
   await runTransaction(firestore, async transaction => {
     const existing = await transaction.get(recordRef);
-    if (existing.exists()) throw new Error('Você já registrou este tipo de estudo hoje.');
-    transaction.set(recordRef, { ...input, dayKey, createdAt: serverTimestamp() });
+    if (existing.exists()) {
+      if (existing.data().evaluation !== 'revise' || existing.data().feedbackVisible !== true) throw new Error('Você já registrou este tipo de estudo hoje.');
+      transaction.update(recordRef, { summary: input.summary, passage: input.passage ?? null, feedbackVisible: false, evaluation: 'resubmitted', previousFeedback: existing.data().feedback ?? '', score: 0, revisionCount: Number(existing.data().revisionCount ?? 0) + 1, revisedAt: serverTimestamp() });
+      return;
+    }
+    transaction.set(recordRef, { ...input, dayKey, revisionCount: 0, createdAt: serverTimestamp() });
   });
   return recordRef;
 }
@@ -73,7 +77,7 @@ export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & {
 export async function listMyStudyRecords(userId: string) {
   const firestore = requireFirestore();
   const result = await getDocs(query(collection(firestore, 'studyRecords'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(10)));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as { source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; score?: number; evaluation?: string; feedbackVisible?: boolean; feedback?: string; createdAt?: { toDate?: () => Date } }) }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { source?: 'lesson' | 'bible' | 'book'; passage?: string; summary?: string; score?: number; evaluation?: string; revisionCount?: number; feedbackVisible?: boolean; feedback?: string; createdAt?: { toDate?: () => Date } }) }));
 }
 
 export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {
