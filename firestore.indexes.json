@@ -26,6 +26,7 @@
     ,{ "collectionGroup": "muralPosts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
     ,{ "collectionGroup": "leadershipTransfers", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "districtId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
     ,{ "collectionGroup": "leadershipTransfers", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "requestedBy", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+    ,{ "collectionGroup": "eventRsvps", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "eventId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

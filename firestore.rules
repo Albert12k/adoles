@@ -150,7 +150,7 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         coordinatorOf(resource.data.districtId));
       allow update: if signedIn() && resource.data.userId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt', 'updatedAt']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'userName', 'confirmedAt', 'updatedAt']) &&
         request.resource.data.status in ['confirmed', 'cancelled'];
     }
 
@@ -206,7 +206,8 @@ service cloud.firestore {
         ((directorOf(request.resource.data.classId) &&
           request.resource.data.classId in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.classIds) ||
          (request.resource.data.type == 'leadership' &&
-          coordinatorOf(get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.districtId)));
+          coordinatorOf(get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.districtId)) ||
+         (request.resource.data.type == 'event' && coordinatorOf(request.resource.data.districtId)));
       allow update: if signedIn() && resource.data.userId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
