@@ -29,6 +29,12 @@ service cloud.firestore {
             resource.data.classIds.hasAny(profile().classIds))));
     }
 
+    match /accountDeletionRequests/{userId} {
+      allow create: if signedIn() && request.auth.uid == userId && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow update: if admin() || (signedIn() && request.auth.uid == userId && resource.data.status == 'pending' && request.resource.data.status == 'pending' && request.resource.data.userId == resource.data.userId);
+    }
+
     match /districts/{districtId} {
       allow read: if signedIn();
       allow write: if admin();
