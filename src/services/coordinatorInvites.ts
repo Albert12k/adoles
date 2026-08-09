@@ -1,8 +1,9 @@
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
-export interface CoordinatorInvite { id: string; code: string; districtId: string; districtName: string; active: boolean; usedBy?: string; }
+export interface CoordinatorInvite { id: string; code: string; districtId: string; districtName: string; active: boolean; usedBy?: string; cancelled?: boolean; expiresAt?: Date; }
 export interface CoordinatorAccount { id: string; name: string; email: string; districtId: string; districtName: string; active: boolean; }
+export interface CoordinatorAuditItem { id: string; coordinatorName: string; districtId?: string; active?: boolean; changedAt?: Date; }
 const newCode = () => `COORD-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
 export async function createCoordinatorInvite(districtId: string) {
@@ -11,7 +12,7 @@ export async function createCoordinatorInvite(districtId: string) {
   const district = await getDoc(doc(db, 'districts', districtId));
   if (!district.exists()) throw new Error('Distrito não encontrado.');
   const code = newCode();
-  await setDoc(doc(db, 'coordinatorInvites', code), { code, districtId, districtName: district.data().name ?? districtId, active: true, createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
+  await setDoc(doc(db, 'coordinatorInvites', code), { code, districtId, districtName: district.data().name ?? districtId, active: true, createdBy: auth.currentUser.uid, createdAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 7 * 86400000)) });
   return code;
 }
 
@@ -19,14 +20,26 @@ export async function validateCoordinatorInvite(code: string) {
   if (!db) throw new Error('Firebase ainda não foi configurado.');
   const normalized = code.trim().toUpperCase();
   const invite = await getDoc(doc(db, 'coordinatorInvites', normalized));
-  if (!invite.exists() || !invite.data().active) throw new Error('Convite de coordenador inválido ou já utilizado.');
+  if (!invite.exists() || !invite.data().active || invite.data().cancelled) throw new Error('Convite de coordenador inválido ou já utilizado.');
+  if (invite.data().expiresAt?.toMillis?.() < Date.now()) throw new Error('Este convite expirou. Solicite um novo código ao administrador.');
   return { code: normalized, districtId: String(invite.data().districtId), districtName: String(invite.data().districtName ?? '') };
 }
 
 export async function listCoordinatorInvites(): Promise<CoordinatorInvite[]> {
   if (!db || !auth?.currentUser) return [];
   const result = await getDocs(query(collection(db, 'coordinatorInvites'), where('createdBy', '==', auth.currentUser.uid)));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<CoordinatorInvite, 'id'>) }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as Omit<CoordinatorInvite, 'id' | 'expiresAt'>), expiresAt: item.data().expiresAt?.toDate?.() }));
+}
+
+export async function cancelCoordinatorInvite(inviteId: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para cancelar o convite.');
+  await updateDoc(doc(db, 'coordinatorInvites', inviteId), { active: false, cancelled: true, cancelledBy: auth.currentUser.uid, cancelledAt: serverTimestamp() });
+}
+
+export async function listCoordinatorAudit(): Promise<CoordinatorAuditItem[]> {
+  if (!db || !auth?.currentUser) return [];
+  const result = await getDocs(collection(db, 'coordinatorAudit'));
+  return result.docs.map(item => ({ id: item.id, coordinatorName: item.data().coordinatorName ?? 'Coordenador', districtId: item.data().districtId, active: item.data().active, changedAt: item.data().changedAt?.toDate?.() })).sort((a, b) => (b.changedAt?.getTime() ?? 0) - (a.changedAt?.getTime() ?? 0));
 }
 
 export async function listCoordinatorAccounts(): Promise<CoordinatorAccount[]> {

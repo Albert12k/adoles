@@ -41,6 +41,10 @@ service cloud.firestore {
         request.resource.data.requestedRole in ['director', 'coordinator'] &&
         (request.resource.data.requestedRole == 'director' ||
           (get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data.active == true &&
+           (!('cancelled' in get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data) ||
+            get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data.cancelled != true) &&
+           (!('expiresAt' in get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data) ||
+            get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data.expiresAt > request.time) &&
            get(/databases/$(database)/documents/coordinatorInvites/$(request.resource.data.inviteCode)).data.districtId == request.resource.data.districtId));
       allow read: if signedIn() && (requestId == request.auth.uid || admin() ||
         (roleIs('coordinator') && resource.data.districtId == profile().districtId));
