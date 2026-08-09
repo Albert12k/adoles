@@ -235,7 +235,10 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         directorOf(resource.data.classId) || admin());
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
-        memberOf(request.resource.data.classId) && request.resource.data.status == 'pending';
+        memberOf(request.resource.data.classId) && request.resource.data.status == 'pending' &&
+        get(/databases/$(database)/documents/quizzes/$(request.resource.data.quizId)).data.active == true &&
+        get(/databases/$(database)/documents/quizzes/$(request.resource.data.quizId)).data.releaseAt <= request.time.toMillis() &&
+        get(/databases/$(database)/documents/quizzes/$(request.resource.data.quizId)).data.closesAt > request.time.toMillis();
       allow update: if directorOf(resource.data.classId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'score', 'correct', 'correctAnswers', 'totalQuestions', 'resultPublished', 'publishedAt', 'reviewedBy', 'reviewedAt']);
     }

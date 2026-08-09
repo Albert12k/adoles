@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -118,9 +119,18 @@ export async function reviewAttendance(recordId: string, reviewerId: string, app
 
 export async function getWeeklyQuiz(classId: string) {
   const firestore = requireFirestore();
-  const result = await getDocs(query(collection(firestore, 'quizzes'), where('classId', '==', classId), where('active', '==', true), orderBy('releaseAt', 'desc'), limit(1)));
-  if (result.empty) return null;
-  return { id: result.docs[0].id, ...result.docs[0].data() } as unknown as Quiz;
+  const result = await getDocs(query(collection(firestore, 'quizzes'), where('classId', '==', classId), where('active', '==', true), orderBy('releaseAt', 'desc'), limit(10)));
+  const now = Date.now();
+  const available = result.docs.find(item => Number(item.data().releaseAt ?? 0) <= now && Number(item.data().closesAt ?? Number.MAX_SAFE_INTEGER) > now);
+  return available ? { id: available.id, ...available.data() } as unknown as Quiz : null;
+}
+
+export function subscribeToQuizAvailability(quizId: string, callback: (available: boolean) => void) {
+  const firestore = requireFirestore();
+  return onSnapshot(doc(firestore, 'quizzes', quizId), snapshot => {
+    const data = snapshot.data(); const now = Date.now();
+    callback(Boolean(snapshot.exists() && data?.active === true && Number(data.releaseAt ?? 0) <= now && Number(data.closesAt ?? Number.MAX_SAFE_INTEGER) > now));
+  });
 }
 
 export async function submitQuizAnswers(quizId: string, answers: Array<number | string>) {
@@ -128,6 +138,7 @@ export async function submitQuizAnswers(quizId: string, answers: Array<number | 
   if (!auth?.currentUser) throw new Error('Entre novamente para responder.');
   const [quiz, profile] = await Promise.all([getDoc(doc(firestore, 'quizzes', quizId)), getDoc(doc(firestore, 'users', auth.currentUser.uid))]);
   if (!quiz.exists()) throw new Error('Quiz não encontrado.');
+  if (!quiz.data().active || Number(quiz.data().releaseAt ?? 0) > Date.now() || Number(quiz.data().closesAt ?? 0) <= Date.now()) throw new Error('Este quiz foi encerrado e não aceita mais respostas.');
   const attemptRef = doc(firestore, 'quizAttempts', `${quizId}_${auth.currentUser.uid}`);
   await setDoc(attemptRef, { quizId, classId: quiz.data().classId, userId: auth.currentUser.uid, userName: profile.data()?.name ?? 'Adolescente', answers, status: 'pending', createdAt: serverTimestamp() });
   return { attemptId: attemptRef.id, correctAnswers: 0, totalQuestions: answers.length, points: 0 } as QuizResult;

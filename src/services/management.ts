@@ -72,6 +72,26 @@ export async function publishQuizContent(input: {
   return { quizId: quizRef.id };
 }
 
+export interface ManagedQuiz { id: string; title: string; releaseAt: number; closesAt: number; active: boolean; }
+export async function listManagedQuizzes(selectedClassId?: string): Promise<ManagedQuiz[]> {
+  if (!db || !auth?.currentUser) return [];
+  let classId = selectedClassId;
+  if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
+  if (!classId) return [];
+  const result = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
+  return result.docs.map(item => ({ id: item.id, title: item.data().title ?? 'Quiz semanal', releaseAt: Number(item.data().releaseAt ?? 0), closesAt: Number(item.data().closesAt ?? 0), active: item.data().active === true })).sort((a, b) => b.releaseAt - a.releaseAt);
+}
+
+export async function endQuizNow(quizId: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para encerrar o quiz.');
+  await runTransaction(db, async transaction => {
+    const quizRef = doc(db!, 'quizzes', quizId); const quiz = await transaction.get(quizRef);
+    if (!quiz.exists() || !quiz.data().active) throw new Error('Este quiz já foi encerrado.');
+    transaction.update(quizRef, { active: false, closesAt: Date.now(), endedBy: auth!.currentUser!.uid, endedAt: serverTimestamp() });
+  });
+  return { success: true };
+}
+
 export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean) {
   if (type === 'leadershipTransfer') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');

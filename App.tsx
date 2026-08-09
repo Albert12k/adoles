@@ -15,9 +15,9 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers, validateClassInviteCode } from './src/services/data';
+import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers, subscribeToQuizAvailability, validateClassInviteCode } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
-import { manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem } from './src/services/management';
+import { endQuizNow, listManagedQuizzes, manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem, type ManagedQuiz } from './src/services/management';
 import { exportLeadershipReport, loadLeadershipReport, type LeadershipReport } from './src/services/report';
 import { selectAndUploadContentPdf } from './src/services/media';
 import { markNotificationRead, registerPushNotifications } from './src/services/notifications';
@@ -280,6 +280,7 @@ function QuizScreen({ classId }: { classId: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Array<number | string | null>>([]);
   useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setResultPublished(attempt.resultPublished === true); setQuizScore(attempt.resultPublished ? attempt.score ?? null : null); if (attempt.resultPublished) { const ranking = await getQuizRanking(current.id); setQuizRanking(ranking?.entries ?? []); setRankingWeek(ranking?.weekLabel ?? 'Ranking da semana'); } } } }).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (!quiz?.id || quizStatus === 'pending' || quizStatus === 'reviewed') return; return subscribeToQuizAvailability(quiz.id, available => { if (!available) { setQuiz(null); setQuizError('O diretor encerrou este quiz. As respostas não podem mais ser enviadas.'); } }); }, [quiz?.id, quizStatus]);
   const question = quiz?.questions?.[currentIndex];
   const options = question?.options ?? [];
   const answer = answers[currentIndex] ?? null;
@@ -743,6 +744,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [quizTitle, setQuizTitle] = useState('Jornada bíblica semanal');
   const [quizReleaseMode, setQuizReleaseMode] = useState<'now' | 'saturday'>('saturday');
   const [quizDurationDays, setQuizDurationDays] = useState(7);
+  const [managedQuizzes, setManagedQuizzes] = useState<ManagedQuiz[]>([]);
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
@@ -792,6 +794,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const isLeadershipHistory = title === 'Histórico de lideranças';
   const leadershipHistory = useLeadershipHistory(isLeadershipHistory);
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
+  useEffect(() => { if (isQuiz) listManagedQuizzes(selectedClassId).then(setManagedQuizzes).catch(() => undefined); }, [isQuiz, selectedClassId]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   useEffect(() => { if (isCoordinatorInvites) Promise.all([listStructures(), listCoordinatorInvites(), listCoordinatorAccounts(), listCoordinatorAudit()]).then(([items, invites, accounts, audit]) => { setStructures(items); setCoordinatorInvites(invites); setCoordinatorAccounts(accounts); setCoordinatorAudit(audit); setCoordinatorTransfers(Object.fromEntries(accounts.map(item => [item.id, item.districtId]))); setCoordinatorDistrictId(current => current || items.find(item => item.kind === 'district')?.id || ''); }).catch(() => undefined); }, [isCoordinatorInvites]);
   useEffect(() => { if (isClassActivity) listDirectedActivities(selectedClassId).then(setDirectedActivities).catch(() => undefined); }, [isClassActivity, selectedClassId]);
@@ -841,7 +844,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
         if (invalid) throw new Error('Revise os enunciados, alternativas e gabaritos antes de publicar.');
       }
       if (firebaseEnabled && isContent) await publishContent({ classId: selectedClassId, title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
-      if (firebaseEnabled && isQuiz) { const releaseAt = quizReleaseMode === 'now' ? Date.now() : nextSaturdayAt(); await publishQuizContent({ classId: selectedClassId, title: quizTitle.trim(), releaseAt, closesAt: releaseAt + quizDurationDays * 24 * 60 * 60 * 1000, questions: quizQuestions }); setMemberNotice(quizReleaseMode === 'now' ? 'Quiz publicado para a base' : 'Quiz agendado para o próximo sábado'); }
+      if (firebaseEnabled && isQuiz) { const releaseAt = quizReleaseMode === 'now' ? Date.now() : nextSaturdayAt(); await publishQuizContent({ classId: selectedClassId, title: quizTitle.trim(), releaseAt, closesAt: releaseAt + quizDurationDays * 24 * 60 * 60 * 1000, questions: quizQuestions }); setManagedQuizzes(await listManagedQuizzes(selectedClassId)); setMemberNotice(quizReleaseMode === 'now' ? 'Quiz publicado para a base' : 'Quiz agendado para o próximo sábado'); }
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(selectedClassId); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       if (firebaseEnabled && isChallengeCreation) { await submitClassChallenge({ classId: selectedClassId, title: lessonTitle, description: challengeDescription, evidence: challengeEvidence, bonusPoints: Number(challengePoints) || 100 }); setMemberNotice('Desafio enviado ao coordenador para validação'); }
@@ -885,6 +888,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Publicar agora</Text><Text style={styles.manageCopy}>A turma receberá uma notificação</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isQuiz && <>
+        {managedQuizzes.length > 0 && <><Text style={styles.sectionTitle}>Quizzes ativos ou agendados</Text>{managedQuizzes.map(item => <View key={item.id} style={styles.formCard}><View style={styles.weekRow}><View style={styles.flex}><Text style={styles.manageTitle}>{item.title}</Text><Text style={styles.manageCopy}>{item.releaseAt > Date.now() ? `Agendado para ${new Date(item.releaseAt).toLocaleDateString('pt-BR')}` : 'Disponível agora'} · encerramento previsto em {new Date(item.closesAt).toLocaleDateString('pt-BR')}</Text></View><Pill tone={item.releaseAt > Date.now() ? 'gold' : 'teal'}>{item.releaseAt > Date.now() ? 'AGENDADO' : 'ABERTO'}</Pill></View><Pressable style={styles.memberDangerButton} onPress={async () => { try { await endQuizNow(item.id); setManagedQuizzes(await listManagedQuizzes(selectedClassId)); setMemberNotice('Quiz encerrado imediatamente'); } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível encerrar o quiz.'); } }}><Text style={styles.memberDangerText}>Encerrar quiz agora</Text></Pressable></View>)}</>}
         <View style={styles.formCard}><AuthField label="Título do quiz" placeholder="Ex.: Jornada de Josué" value={quizTitle} onChangeText={setQuizTitle} /><Text style={styles.authLabel}>Quando liberar?</Text><View style={styles.scopeWrap}>{([['now', 'Agora'], ['saturday', 'Próximo sábado · 00h']] as const).map(([value, label]) => <Pressable key={value} style={[styles.scopeChip, quizReleaseMode === value && styles.scopeChipActive]} onPress={() => setQuizReleaseMode(value)}><Text style={[styles.scopeChipText, quizReleaseMode === value && styles.scopeChipTextActive]}>{label}</Text></Pressable>)}</View><Text style={[styles.authLabel, { marginTop: 14 }]}>Prazo para responder</Text><View style={styles.scopeWrap}>{[3, 7, 14].map(days => <Pressable key={days} style={[styles.scopeChip, quizDurationDays === days && styles.scopeChipActive]} onPress={() => setQuizDurationDays(days)}><Text style={[styles.scopeChipText, quizDurationDays === days && styles.scopeChipTextActive]}>{days} dias</Text></Pressable>)}</View></View>
         <View style={styles.formCard}><Text style={styles.manageTitle}>Jornada com {quizQuestions.length} fases</Text><Text style={styles.manageCopy}>Misture formatos para manter o quiz dinâmico, reflexivo e divertido.</Text></View>
         {quizQuestions.map((item, questionIndex) => <View key={`${item.type}_${questionIndex}`} style={styles.formCard}>
