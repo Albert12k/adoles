@@ -207,14 +207,15 @@ export async function publishLatestQuizRanking(selectedClassId?: string) {
 export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string }) {
   if (input.action === 'regenerateCode') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
-    const code = `VIVA-${Math.floor(1000 + Math.random() * 9000)}`;
+    const code = `VIVA-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
     await runTransaction(db, async transaction => {
       const inviteRef = doc(db!, 'classInvites', input.classId);
       const current = await transaction.get(inviteRef);
+      const selectedClass = await transaction.get(doc(db!, 'classes', input.classId));
       const data = current.data();
       if (!data) throw new Error('Convite da classe não encontrado.');
       if (data.inviteCode) transaction.update(doc(db!, 'classInviteCodes', data.inviteCode), { active: false });
-      transaction.set(doc(db!, 'classInviteCodes', code), { classId: input.classId, districtId: data.districtId, active: true, createdAt: serverTimestamp() });
+      transaction.set(doc(db!, 'classInviteCodes', code), { classId: input.classId, districtId: data.districtId, className: selectedClass.data()?.name ?? 'Base', ageGroup: selectedClass.data()?.ageGroup ?? 'adolescentes', active: true, createdAt: serverTimestamp() });
       transaction.update(inviteRef, { inviteCode: code, updatedAt: serverTimestamp(), updatedBy: auth!.currentUser!.uid });
     });
     return { success: true, inviteCode: code };

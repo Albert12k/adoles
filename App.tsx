@@ -15,7 +15,7 @@ import {
 import { auth, firebaseEnabled } from './src/config/firebase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers } from './src/services/data';
+import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitAttendance, submitQuizAnswers, validateClassInviteCode } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, reviewLeadershipItem } from './src/services/management';
 import { exportLeadershipReport, loadLeadershipReport, type LeadershipReport } from './src/services/report';
@@ -506,6 +506,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [password, setPassword] = useState('');
   const [invite, setInvite] = useState('');
   const [inviteState, setInviteState] = useState<'idle' | 'valid'>('idle');
+  const [foundClass, setFoundClass] = useState<{ className: string; churchName: string; ageGroup: string } | null>(null);
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
@@ -526,6 +527,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
     try {
+      if (selectedRole === 'adolescente' && invite.trim() && inviteState !== 'valid') throw new Error('Verifique o código da base antes de criar a conta.');
       const user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined, inviteCode: selectedRole === 'coordenador' ? invite : undefined });
       if (selectedRole === 'adolescente' && invite.trim().length >= 5) {
         await requestClassEntry(user.uid, invite);
@@ -556,8 +558,11 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     finally { setAuthBusy(false); }
   };
 
-  const validateInvite = () => {
-    if (invite.trim().length >= 5) setInviteState('valid');
+  const validateInvite = async () => {
+    setAuthBusy(true); setAuthError(''); setFoundClass(null);
+    try { const result = await validateClassInviteCode(invite); setFoundClass(result); setInviteState('valid'); }
+    catch (error) { setInviteState('idle'); setAuthError(error instanceof Error ? error.message : 'Código inválido ou expirado.'); }
+    finally { setAuthBusy(false); }
   };
 
   if (step === 'welcome') {
@@ -632,17 +637,17 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
             <Text style={styles.authEyebrow}>ENTRE NA SUA TURMA</Text>
             <Text style={styles.authTitle}>Você recebeu um código?</Text>
             <Text style={styles.authCopy}>Peça ao seu diretor o código de convite da classe. Ele conecta sua conta à turma certa.</Text>
-            <AuthField label="Código da classe" placeholder="Ex.: VIVA-7429" value={invite} onChangeText={(text) => { setInvite(text.toUpperCase()); setInviteState('idle'); }} />
-            {inviteState === 'valid' && (
+            <AuthField label="Código da classe" placeholder="Ex.: VIVA-AB12CD34" value={invite} onChangeText={(text) => { setInvite(text.toUpperCase()); setInviteState('idle'); setFoundClass(null); setAuthError(''); }} />
+            {inviteState === 'valid' && foundClass && (
               <View style={styles.classFound}>
                 <View style={styles.classFoundIcon}><Text>✓</Text></View>
-                <View><Text style={styles.classFoundTitle}>Base Geração</Text><Text style={styles.classFoundCopy}>IASD Central · Adolescentes</Text></View>
+                <View><Text style={styles.classFoundTitle}>{foundClass.className}</Text><Text style={styles.classFoundCopy}>{foundClass.churchName} · {foundClass.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></View>
               </View>
             )}
             {inviteState === 'idle' ? (
-              <Pressable style={[styles.authPrimary, invite.length < 5 && styles.buttonDisabled]} disabled={invite.length < 5} onPress={validateInvite}><Text style={styles.authPrimaryText}>Verificar código</Text></Pressable>
+              <Pressable style={[styles.authPrimary, (invite.length < 5 || authBusy) && styles.buttonDisabled]} disabled={invite.length < 5 || authBusy} onPress={validateInvite}><Text style={styles.authPrimaryText}>{authBusy ? 'Verificando...' : 'Verificar código'}</Text></Pressable>
             ) : (
-              <Pressable style={styles.authPrimary} disabled={authBusy} onPress={() => finishRegistration('adolescente')}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : 'Entrar na Base Geração'}</Text></Pressable>
+              <Pressable style={styles.authPrimary} disabled={authBusy} onPress={() => finishRegistration('adolescente')}><Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : `Solicitar entrada em ${foundClass?.className ?? 'minha base'}`}</Text></Pressable>
             )}
             <Pressable disabled={authBusy} onPress={() => finishRegistration('adolescente')}><Text style={styles.skipLink}>Ainda não tenho um código</Text></Pressable>
             {authError !== '' && <Text style={styles.authError}>{authError}</Text>}

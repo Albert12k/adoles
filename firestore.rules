@@ -98,7 +98,7 @@ service cloud.firestore {
     }
 
     match /classInviteCodes/{code} {
-      allow get: if signedIn();
+      allow get: if true;
       allow list: if false;
       allow create: if admin() || coordinatorOf(request.resource.data.districtId);
       allow update: if admin() || coordinatorOf(resource.data.districtId) || directorOf(resource.data.classId);

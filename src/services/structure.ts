@@ -8,7 +8,7 @@ const slugify = (value: string) => value
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-|-$/g, '');
 
-const inviteCode = () => `VIVA-${Math.floor(1000 + Math.random() * 9000)}`;
+const inviteCode = () => `VIVA-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
 
 export async function createInitialStructure(input: { districtName: string; churchName: string; className: string; ageGroup: 'adolescentes' | 'pre-adolescentes' }) {
   if (!db) throw new Error('Firebase ainda não foi configurado.');
@@ -33,7 +33,7 @@ export async function createInitialStructure(input: { districtName: string; chur
     classId, districtId, inviteCode: code, active: true, updatedAt: serverTimestamp(),
   });
   batch.set(doc(db, 'classInviteCodes', code), {
-    classId, districtId, active: true, createdAt: serverTimestamp(),
+    classId, districtId, className: input.className.trim(), churchName: input.churchName.trim(), ageGroup: input.ageGroup, active: true, createdAt: serverTimestamp(),
   });
   await batch.commit();
   return { districtId, churchId, classId, inviteCode: code };
@@ -69,7 +69,7 @@ export async function createCoordinatorStructure(input: { churchName: string; cl
   batch.set(doc(db, 'churches', churchId), { name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp() });
   batch.set(doc(db, 'classes', classId), { name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup, directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp() });
   batch.set(doc(db, 'classInvites', classId), { classId, districtId, inviteCode: code, active: true, updatedAt: serverTimestamp() });
-  batch.set(doc(db, 'classInviteCodes', code), { classId, districtId, active: true, createdAt: serverTimestamp() });
+  batch.set(doc(db, 'classInviteCodes', code), { classId, districtId, className: input.className.trim(), churchName: input.churchName.trim(), ageGroup: input.ageGroup, active: true, createdAt: serverTimestamp() });
   await batch.commit();
   return { classId, inviteCode: code };
 }

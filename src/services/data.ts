@@ -37,6 +37,14 @@ export async function requestClassEntry(userId: string, inviteCode: string) {
   return { classId, className: '' };
 }
 
+export async function validateClassInviteCode(inviteCode: string) {
+  const firestore = requireFirestore();
+  const code = inviteCode.trim().toUpperCase();
+  const invite = await getDoc(doc(firestore, 'classInviteCodes', code));
+  if (!invite.exists() || !invite.data().active) throw new Error('Código de convite inválido ou expirado.');
+  return { code, classId: String(invite.data().classId), className: String(invite.data().className ?? 'Base encontrada'), churchName: String(invite.data().churchName ?? 'Igreja local'), ageGroup: String(invite.data().ageGroup ?? 'adolescentes') };
+}
+
 export async function listWeeklyContent(classId: string) {
   const firestore = requireFirestore();
   const result = await getDocs(query(
