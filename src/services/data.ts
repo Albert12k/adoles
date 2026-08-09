@@ -14,9 +14,9 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
-import { auth, cloudFunctions, db, storage } from '../config/firebase';
+import { auth, cloudFunctions, db } from '../config/firebase';
+import { uploadPrivateFile } from '../config/supabase';
 import type { StudyRecord } from '../domain/models';
 import type { LeadershipReport, Quiz, QuizResult } from '../domain/models';
 
@@ -81,12 +81,10 @@ export async function listMyStudyRecords(userId: string) {
 }
 
 export async function uploadAttendanceEvidence(userId: string, classId: string, localUri: string) {
-  if (!storage) throw new Error('Firebase Storage ainda não foi configurado.');
   const response = await fetch(localUri);
   const blob = await response.blob();
-  const path = `attendance/${classId}/${userId}/${Date.now()}.jpg`;
-  const snapshot = await uploadBytes(ref(storage, path), blob, { contentType: blob.type || 'image/jpeg' });
-  return getDownloadURL(snapshot.ref);
+  const path = `${userId}/${classId}/${Date.now()}.jpg`;
+  return uploadPrivateFile('attendance', path, blob, blob.type || 'image/jpeg');
 }
 
 export async function submitAttendance(input: {

@@ -1,8 +1,8 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { doc, getDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { auth, db, storage } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+import { uploadPrivateFile } from '../config/supabase';
 import { submitAttendance, uploadAttendanceEvidence } from './data';
 
 async function currentScope() {
@@ -16,7 +16,6 @@ async function currentScope() {
 }
 
 export async function selectAndUploadContentPdf() {
-  if (!storage) throw new Error('Firebase Storage ainda não foi configurado.');
   const scope = await currentScope();
   const selection = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
   if (selection.canceled) return null;
@@ -24,8 +23,8 @@ export async function selectAndUploadContentPdf() {
   if ((asset.size ?? 0) > 25 * 1024 * 1024) throw new Error('O PDF deve ter no máximo 25 MB.');
   const blob = await (await fetch(asset.uri)).blob();
   const safeName = asset.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const snapshot = await uploadBytes(ref(storage, `weekly-content/${scope.classId}/${Date.now()}-${safeName}`), blob, { contentType: 'application/pdf' });
-  return { name: asset.name, url: await getDownloadURL(snapshot.ref) };
+  const path = `${scope.user.uid}/${scope.classId}/${Date.now()}-${safeName}`;
+  return { name: asset.name, url: await uploadPrivateFile('weekly-content', path, blob, 'application/pdf') };
 }
 
 export async function selectAttendancePhoto() {
