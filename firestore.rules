@@ -116,10 +116,12 @@ service cloud.firestore {
 
     match /eventRsvps/{rsvpId} {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
-        request.resource.data.status == 'confirmed';
+        request.resource.data.districtId == profile().districtId && request.resource.data.status == 'confirmed';
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         coordinatorOf(resource.data.districtId));
-      allow update: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt', 'updatedAt']) &&
+        request.resource.data.status in ['confirmed', 'cancelled'];
     }
 
     match /weeklyContent/{contentId} {
