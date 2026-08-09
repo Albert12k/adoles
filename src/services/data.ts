@@ -115,7 +115,7 @@ export async function getWeeklyQuiz(classId: string) {
   return { id: result.docs[0].id, ...result.docs[0].data() } as unknown as Quiz;
 }
 
-export async function submitQuizAnswers(quizId: string, answers: number[]) {
+export async function submitQuizAnswers(quizId: string, answers: Array<number | string>) {
   const firestore = requireFirestore();
   if (!auth?.currentUser) throw new Error('Entre novamente para responder.');
   const [quiz, profile] = await Promise.all([getDoc(doc(firestore, 'quizzes', quizId)), getDoc(doc(firestore, 'users', auth.currentUser.uid))]);

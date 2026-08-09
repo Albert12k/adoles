@@ -28,7 +28,7 @@ export async function publishQuizContent(input: {
   classId?: string;
   releaseAt: number;
   closesAt: number;
-  questions: Array<{ prompt: string; options: string[]; correctIndex: number }>;
+  questions: Array<{ type: 'multiple_choice' | 'true_false' | 'assertion_reason' | 'open' | 'identify_false'; prompt: string; options: string[]; correctAnswer: number | string }>;
 }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar o quiz.');
   let classId = input.classId;
@@ -39,8 +39,8 @@ export async function publishQuizContent(input: {
   if (!classId) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
   const quizRef = doc(collection(db, 'quizzes'));
   const batch = writeBatch(db);
-  batch.set(quizRef, { classId, title: input.title, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ prompt, options }) => ({ prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
-  batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, correctIndexes: input.questions.map(item => item.correctIndex), createdBy: auth.currentUser.uid });
+  batch.set(quizRef, { classId, title: input.title, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ type, prompt, options }) => ({ type, prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
+  batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, answers: input.questions.map(item => item.correctAnswer), types: input.questions.map(item => item.type), createdBy: auth.currentUser.uid });
   await batch.commit();
   return { quizId: quizRef.id };
 }
@@ -54,8 +54,12 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       if (!attempt.exists()) throw new Error('Resposta não encontrada.');
       const key = await transaction.get(doc(db!, 'quizAnswerKeys', attempt.data().quizId));
       if (!key.exists()) throw new Error('Gabarito não encontrado.');
-      const correct = approved && attempt.data().answers?.[0] === key.data().correctIndexes?.[0];
-      transaction.update(attemptRef, { status: 'reviewed', score: correct ? 10 : 0, correct, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      const submitted = attempt.data().answers ?? [];
+      const expected = key.data().answers ?? [];
+      const types = key.data().types ?? [];
+      const results = expected.map((answer: number | string, index: number) => types[index] === 'open' ? approved && String(submitted[index] ?? '').trim().length > 0 : submitted[index] === answer);
+      const correctAnswers = results.filter(Boolean).length;
+      transaction.update(attemptRef, { status: 'reviewed', score: correctAnswers * 10, correctAnswers, totalQuestions: expected.length, correct: correctAnswers === expected.length, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
     return { status: 'reviewed' };
   }

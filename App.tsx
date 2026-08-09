@@ -31,6 +31,15 @@ import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents,
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
 type AuthStep = 'welcome' | 'login' | 'register' | 'role' | 'invite';
+type QuizQuestionDraft = { type: 'multiple_choice' | 'true_false' | 'assertion_reason' | 'open' | 'identify_false'; prompt: string; options: string[]; correctAnswer: number | string };
+
+const quizQuestionTemplates: QuizQuestionDraft[] = [
+  { type: 'multiple_choice', prompt: 'Quem recebeu a missão de conduzir o povo após Moisés?', options: ['Josué', 'Daniel', 'Davi', 'Samuel'], correctAnswer: 0 },
+  { type: 'true_false', prompt: 'A coragem bíblica significa nunca sentir medo.', options: ['Verdadeiro', 'Falso'], correctAnswer: 1 },
+  { type: 'assertion_reason', prompt: 'I. Josué deveria ser forte e corajoso. II. Porque Deus prometeu estar com ele. Como as afirmações se relacionam?', options: ['As duas são verdadeiras, e II explica I', 'As duas são verdadeiras, mas II não explica I', 'I é verdadeira e II é falsa', 'I é falsa e II é verdadeira'], correctAnswer: 0 },
+  { type: 'identify_false', prompt: 'Qual alternativa NÃO combina com a mensagem de Josué 1?', options: ['Confiar em Deus', 'Agir com coragem', 'Desistir diante do medo', 'Guardar a Palavra'], correctAnswer: 2 },
+  { type: 'open', prompt: 'Conte uma situação em que você pode praticar coragem nesta semana.', options: [], correctAnswer: 'avaliação do diretor' },
+];
 
 const colors = {
   ink: '#152420',
@@ -235,32 +244,46 @@ function AttendanceScreen({ classId, userName }: { classId: string; userName: st
 }
 
 function QuizScreen({ classId }: { classId: string }) {
-  const [selected, setSelected] = useState<number | null>(null);
-  const [quiz, setQuiz] = useState<{ id: string; title: string; questions: Array<{ prompt: string; options: string[] }> } | null>(null);
+  type PublicQuestion = { type: 'multiple_choice' | 'true_false' | 'assertion_reason' | 'open' | 'identify_false'; prompt: string; options: string[] };
+  const [quiz, setQuiz] = useState<{ id: string; title: string; questions: PublicQuestion[] } | null>(null);
   const [quizStatus, setQuizStatus] = useState('');
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [quizError, setQuizError] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Array<number | string | null>>([]);
   useEffect(() => { if (classId) getWeeklyQuiz(classId).then(async item => { const current = item as unknown as typeof quiz; setQuiz(current); if (current) { const attempt = await getMyQuizAttempt(current.id); if (attempt) { setQuizStatus(attempt.status ?? ''); setQuizScore(attempt.score ?? null); } } }).catch(() => undefined); }, [classId]);
-  const question = quiz?.questions?.[0];
+  const question = quiz?.questions?.[currentIndex];
   const options = question?.options ?? [];
-  const sendAnswer = async () => { if (!quiz || selected === null) return; setQuizError(''); try { await submitQuizAnswers(quiz.id, [selected]); setQuizStatus('pending'); } catch (error) { setQuizError(error instanceof Error ? error.message : 'Não foi possível enviar a resposta.'); } };
+  const answer = answers[currentIndex] ?? null;
+  const typeInfo = { multiple_choice: ['🎯', 'Escolha certeira'], true_false: ['⚡', 'Verdadeiro ou falso'], assertion_reason: ['🧩', 'Afirmação e complemento'], open: ['✍️', 'Explique com suas palavras'], identify_false: ['🔎', 'Encontre a alternativa falsa'] }[question?.type ?? 'multiple_choice'];
+  const setCurrentAnswer = (value: number | string) => setAnswers(items => { const next = [...items]; next[currentIndex] = value; return next; });
+  const advance = async () => {
+    if (!quiz || answer === null || String(answer).trim() === '') return;
+    if (currentIndex < quiz.questions.length - 1) { setCurrentIndex(index => index + 1); return; }
+    setQuizError('');
+    try { await submitQuizAnswers(quiz.id, answers.map(item => item ?? '')); setQuizStatus('pending'); }
+    catch (error) { setQuizError(error instanceof Error ? error.message : 'Não foi possível enviar as respostas.'); }
+  };
   return (
     <View style={styles.pagePad}>
       <View style={styles.quizHeader}>
-        <Pill tone="coral">QUESTÃO 1 DE 5</Pill>
+        <Pill tone="coral">FASE {Math.min(currentIndex + 1, quiz?.questions.length ?? 1)} DE {quiz?.questions.length ?? 1}</Pill>
         <Text style={styles.quizPoints}>+10 pts</Text>
       </View>
+      <Progress value={quiz?.questions.length ? ((currentIndex + 1) / quiz.questions.length) * 100 : 0} color={colors.coral} />
+      <Text style={[styles.pageEyebrow, { marginTop: 22 }]}>{typeInfo[0]} {typeInfo[1].toUpperCase()}</Text>
       <Text style={styles.pageTitle}>{question?.prompt ?? 'O diretor ainda não publicou o quiz semanal.'}</Text>
-      <Text style={styles.pageIntro}>Escolha uma alternativa.</Text>
-      {options.map((option, index) => (
-        <Pressable key={option} style={[styles.option, selected === index && styles.optionSelected]} onPress={() => setSelected(index)}>
-          <Text style={[styles.optionLetter, selected === index && styles.optionLetterSelected]}>{String.fromCharCode(65 + index)}</Text>
+      <Text style={styles.pageIntro}>Complete esta fase para avançar na jornada.</Text>
+      {question?.type === 'open' ? <TextInput multiline value={typeof answer === 'string' ? answer : ''} onChangeText={setCurrentAnswer} placeholder="Escreva sua resposta aqui..." placeholderTextColor="#8A9892" style={[styles.authInput, styles.textArea]} /> : options.map((option, index) => (
+        <Pressable key={`${index}_${option}`} style={[styles.option, answer === index && styles.optionSelected]} onPress={() => setCurrentAnswer(index)}>
+          <Text style={[styles.optionLetter, answer === index && styles.optionLetterSelected]}>{question?.type === 'true_false' ? (index === 0 ? 'V' : 'F') : String.fromCharCode(65 + index)}</Text>
           <Text style={styles.optionText}>{option}</Text>
         </Pressable>
       ))}
-      <Pressable style={[styles.primaryButton, (selected === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed') && styles.buttonDisabled]} disabled={selected === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed'} onPress={sendAnswer}>
-        <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? 'Aguardando correção do diretor' : quizStatus === 'reviewed' ? `Resultado: ${quizScore ?? 0} pontos` : 'Confirmar resposta'}</Text>
+      <Pressable style={[styles.primaryButton, (answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed') && styles.buttonDisabled]} disabled={answer === null || !quiz || quizStatus === 'pending' || quizStatus === 'reviewed'} onPress={advance}>
+        <Text style={styles.primaryButtonText}>{quizStatus === 'pending' ? '⏳ Aguardando correção' : quizStatus === 'reviewed' ? `🏆 Resultado: ${quizScore ?? 0} pontos` : currentIndex === (quiz?.questions.length ?? 1) - 1 ? '🚀 Finalizar jornada' : 'Próxima fase →'}</Text>
       </Pressable>
+      {currentIndex > 0 && quizStatus === '' && <Pressable onPress={() => setCurrentIndex(index => index - 1)}><Text style={styles.skipLink}>← Voltar uma fase</Text></Pressable>}
       {quizError !== '' && <Text style={styles.authError}>{quizError}</Text>}
     </View>
   );
@@ -596,7 +619,7 @@ function ActionRow({ icon, title, copy, badge, onPress }: { icon: string; title:
 function ManagementDetail({ title, role, onBack }: { title: string; role: Exclude<Role, 'adolescente'>; onBack: () => void }) {
   const [saved, setSaved] = useState(false);
   const [lessonTitle, setLessonTitle] = useState('Escolhas que transformam');
-  const [question, setQuestion] = useState('Quem recebeu a missão de conduzir o povo após Moisés?');
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionDraft[]>(quizQuestionTemplates);
   const [approved, setApproved] = useState<string[]>([]);
   const [memberNotice, setMemberNotice] = useState('');
   const [actionError, setActionError] = useState('');
@@ -658,7 +681,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
     setActionError('');
     try {
       if (firebaseEnabled && isContent) await publishContent({ title: lessonTitle, lessonPdfUrl: uploadedPdf?.url, week: 1, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear() });
-      if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Quiz semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: [{ prompt: question, options: ['Josué', 'Daniel', 'Davi', 'Samuel'], correctIndex: 0 }] });
+      if (firebaseEnabled && isQuiz) await publishQuizContent({ title: 'Jornada bíblica semanal', releaseAt: Date.now(), closesAt: Date.now() + 7 * 24 * 60 * 60 * 1000, questions: quizQuestions });
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
@@ -698,7 +721,9 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Publicar agora</Text><Text style={styles.manageCopy}>A turma receberá uma notificação</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isQuiz && <>
-        <View style={styles.formCard}><Text style={styles.authLabel}>Pergunta 1</Text><TextInput multiline value={question} onChangeText={setQuestion} style={[styles.authInput, styles.textArea]} />{['Josué', 'Daniel', 'Davi', 'Samuel'].map((option, index) => <View key={option} style={[styles.quizEditOption, index === 0 && styles.quizEditCorrect]}><Text style={styles.optionLetter}>{String.fromCharCode(65 + index)}</Text><Text style={styles.optionText}>{option}</Text>{index === 0 && <Text style={styles.correctLabel}>CORRETA</Text>}</View>)}<Pressable style={styles.addQuestion}><Text style={styles.addQuestionText}>＋ Adicionar pergunta</Text></Pressable></View>
+        <View style={styles.formCard}><Text style={styles.manageTitle}>Jornada com {quizQuestions.length} fases</Text><Text style={styles.manageCopy}>Misture formatos para manter o quiz dinâmico, reflexivo e divertido.</Text></View>
+        {quizQuestions.map((item, questionIndex) => <View key={`${item.type}_${questionIndex}`} style={styles.formCard}><Pill tone={questionIndex % 2 ? 'teal' : 'coral'}>{({ multiple_choice: '🎯 MÚLTIPLA ESCOLHA', true_false: '⚡ VERDADEIRO OU FALSO', assertion_reason: '🧩 AFIRMAÇÃO + COMPLEMENTO', open: '✍️ QUESTÃO ABERTA', identify_false: '🔎 IDENTIFIQUE A FALSA' } as const)[item.type]}</Pill><TextInput multiline value={item.prompt} onChangeText={text => setQuizQuestions(items => items.map((questionItem, index) => index === questionIndex ? { ...questionItem, prompt: text } : questionItem))} style={[styles.authInput, styles.textArea, { marginTop: 12 }]} />{item.options.map((option, index) => <View key={`${index}_${option}`} style={[styles.quizEditOption, item.correctAnswer === index && styles.quizEditCorrect]}><Text style={styles.optionLetter}>{String.fromCharCode(65 + index)}</Text><Text style={styles.optionText}>{option}</Text>{item.correctAnswer === index && <Text style={styles.correctLabel}>GABARITO</Text>}</View>)}{item.type === 'open' && <Text style={styles.manageCopy}>A resposta será analisada pelo diretor.</Text>}</View>)}
+        <Pressable style={styles.addQuestion} onPress={() => setQuizQuestions(items => [...items, { ...quizQuestionTemplates[0], prompt: 'Nova pergunta de múltipla escolha' }])}><Text style={styles.addQuestionText}>＋ Adicionar outra fase</Text></Pressable>
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Liberar no sábado</Text><Text style={styles.manageCopy}>Abertura automática às 00h</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isApproval && <>{displayApprovals.length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma solicitação pendente</Text><Text style={styles.manageCopy}>Os novos pedidos de liderança aparecerão aqui automaticamente.</Text></View>}{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable>{!done && <Pressable onPress={() => rejectItem(item)}><Text style={styles.contactLink}>Recusar</Text></Pressable>}</View></View>; })}</>}
