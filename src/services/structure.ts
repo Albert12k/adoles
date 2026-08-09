@@ -10,7 +10,7 @@ const slugify = (value: string) => value
 
 const inviteCode = () => `VIVA-${Math.floor(1000 + Math.random() * 9000)}`;
 
-export async function createInitialStructure(input: { districtName: string; churchName: string; className: string }) {
+export async function createInitialStructure(input: { districtName: string; churchName: string; className: string; ageGroup: 'adolescentes' | 'pre-adolescentes' }) {
   if (!db) throw new Error('Firebase ainda não foi configurado.');
   const districtId = slugify(input.districtName);
   const churchId = `${districtId}-${slugify(input.churchName)}`;
@@ -26,7 +26,7 @@ export async function createInitialStructure(input: { districtName: string; chur
     name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp(),
   });
   batch.set(doc(db, 'classes', classId), {
-    name: input.className.trim(), districtId, churchId, ageGroup: 'adolescentes',
+    name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup,
     directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp(),
   });
   batch.set(doc(db, 'classInvites', classId), {
@@ -53,11 +53,11 @@ export async function listStructures(): Promise<StructureItem[]> {
   return [
     ...districts.docs.map(item => ({ id: item.id, name: item.data().name, kind: 'district' as const, detail: 'Distrito' })),
     ...churches.docs.map(item => ({ id: item.id, name: item.data().name, kind: 'church' as const, detail: 'Igreja' })),
-    ...classes.docs.map(item => ({ id: item.id, name: item.data().name, kind: 'class' as const, detail: 'Classe de adolescentes' })),
+    ...classes.docs.map(item => ({ id: item.id, name: item.data().name, kind: 'class' as const, detail: item.data().ageGroup === 'pre-adolescentes' ? 'Base de pré-adolescentes' : 'Base de adolescentes' })),
   ];
 }
 
-export async function createCoordinatorStructure(input: { churchName: string; className: string }) {
+export async function createCoordinatorStructure(input: { churchName: string; className: string; ageGroup: 'adolescentes' | 'pre-adolescentes' }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
   const profile = (await getDoc(doc(db, 'users', auth.currentUser.uid))).data();
   const districtId = String(profile?.districtId || '');
@@ -67,7 +67,7 @@ export async function createCoordinatorStructure(input: { churchName: string; cl
   const code = inviteCode();
   const batch = writeBatch(db);
   batch.set(doc(db, 'churches', churchId), { name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp() });
-  batch.set(doc(db, 'classes', classId), { name: input.className.trim(), districtId, churchId, ageGroup: 'adolescentes', directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp() });
+  batch.set(doc(db, 'classes', classId), { name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup, directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp() });
   batch.set(doc(db, 'classInvites', classId), { classId, districtId, inviteCode: code, active: true, updatedAt: serverTimestamp() });
   batch.set(doc(db, 'classInviteCodes', code), { classId, districtId, active: true, createdAt: serverTimestamp() });
   await batch.commit();

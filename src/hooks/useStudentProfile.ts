@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, limit, onSnapshot, query, where } fro
 import { auth, db } from '../config/firebase';
 
 export function useStudentProfile() {
-  const [state, setState] = useState({ name: 'Adolescente', className: 'Sem turma', classId: '', districtId: '', pending: false, status: '', themeColor: '' });
+  const [state, setState] = useState({ name: 'Adolescente', className: 'Sem turma', classId: '', districtId: '', ageGroup: 'adolescentes', pending: false, status: '', themeColor: '' });
   useEffect(() => {
     if (!db || !auth?.currentUser) return;
     let active = true;
@@ -12,9 +12,10 @@ export function useStudentProfile() {
       if (!data || !active) return;
       const classId = data.classIds?.[0];
       let className = 'Sem turma';
-      if (classId) className = (await getDoc(doc(db!, 'classes', classId))).data()?.name ?? 'Turma';
+      let ageGroup = 'adolescentes';
+      if (classId) { const classData = (await getDoc(doc(db!, 'classes', classId))).data(); className = classData?.name ?? 'Turma'; ageGroup = classData?.ageGroup ?? 'adolescentes'; }
       const pending = !classId && !(await getDocs(query(collection(db!, 'classJoinRequests'), where('userId', '==', auth!.currentUser!.uid), where('status', '==', 'pending'), limit(1)))).empty;
-      if (active) setState({ name: data.name ?? 'Adolescente', className, classId: classId ?? '', districtId: data.districtId ?? '', pending, status: data.status ?? '', themeColor: data.themeColor ?? '' });
+      if (active) setState({ name: data.name ?? 'Adolescente', className, classId: classId ?? '', districtId: data.districtId ?? '', ageGroup, pending, status: data.status ?? '', themeColor: data.themeColor ?? '' });
     });
     return () => { active = false; unsubscribe(); };
   }, []);
