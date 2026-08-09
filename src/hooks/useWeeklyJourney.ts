@@ -30,7 +30,7 @@ export function useWeeklyJourney(classId: string) {
         { key: 'study', label: 'Estudo e resumo', points: 20, done: studies.docs.some(item => afterStart(item.data().createdAt)), tab: 'Estudo' },
         { key: 'attendance', label: 'Presença na base', points: 10, done: attendance.docs.some(item => item.data().status === 'approved' && afterStart(item.data().createdAt)), tab: 'Presença' },
         { key: 'quiz', label: 'Quiz semanal', points: 10, done: !!quizId && attempts.docs.some(item => item.data().quizId === quizId), tab: 'Quiz' },
-        { key: 'activity', label: 'Atividade da base', points: 20, done: activities.docs.some(item => item.data().status === 'confirmed' && afterStart(item.data().confirmedAt)), tab: 'Mais' },
+        { key: 'activity', label: 'Atividade da base', points: 20, done: activities.docs.some(item => item.data().status === 'attended' && afterStart(item.data().reviewedAt)), tab: 'Mais' },
       ];
       if (active) setState({ title: contents.docs[0]?.data().title ?? 'Estudo da semana', tasks });
     };

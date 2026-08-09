@@ -24,7 +24,7 @@ export function useStudentProgress() {
       ]);
       const approvedAttendance = attendanceDocs.docs.filter(item => item.data().status === 'approved');
       const reviewedAttempts = attempts.docs.filter(item => item.data().status === 'reviewed');
-      const confirmedActivities = activityDocs.docs.filter(item => item.data().status === 'confirmed');
+      const confirmedActivities = activityDocs.docs.filter(item => item.data().status === 'attended');
       const correct = reviewedAttempts.reduce((sum, item) => sum + Number(item.data().correctAnswers ?? 0), 0);
       const lessonStudies = studies.docs.filter(item => item.data().source === 'lesson' && Number(item.data().score ?? 0) > 0).length;
       const bibleStudies = studies.docs.filter(item => item.data().source === 'bible' && Number(item.data().score ?? 0) > 0).length;
