@@ -215,7 +215,8 @@ service cloud.firestore {
     }
 
     match /periodClosures/{closureId} {
-      allow read: if signedIn() && (memberOf(resource.data.classId) || directorOf(resource.data.classId) || admin());
+      allow read: if signedIn() && (memberOf(resource.data.classId) || directorOf(resource.data.classId) || admin() ||
+        coordinatorOf(get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.districtId));
       allow create: if directorOf(request.resource.data.classId) || admin();
       allow update: if admin();
     }
