@@ -214,7 +214,11 @@ service cloud.firestore {
       allow update: if (directorOf(resource.data.classId) && request.resource.data.status == resource.data.status &&
         request.resource.data.districtId == resource.data.districtId && request.resource.data.classId == resource.data.classId &&
         request.resource.data.bonusPoints == resource.data.bonusPoints) ||
-        (coordinatorOf(resource.data.districtId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']));
+        (directorOf(resource.data.classId) && resource.data.status == 'rejected' && request.resource.data.status == 'pending' &&
+          request.resource.data.districtId == resource.data.districtId && request.resource.data.classId == resource.data.classId &&
+          request.resource.data.bonusPoints == resource.data.bonusPoints &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description', 'evidence', 'status', 'reviewerFeedback', 'resubmissionCount', 'resubmittedAt'])) ||
+        (coordinatorOf(resource.data.districtId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewerFeedback', 'reviewedBy', 'reviewedAt']));
     }
 
     match /scores/{scoreId} {
@@ -230,6 +234,8 @@ service cloud.firestore {
         ((directorOf(request.resource.data.classId) &&
           request.resource.data.classId in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.classIds) ||
          (request.resource.data.type == 'leadership' &&
+          coordinatorOf(get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.districtId)) ||
+         (request.resource.data.type == 'challengeDecision' &&
           coordinatorOf(get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.districtId)) ||
          (request.resource.data.type == 'event' && coordinatorOf(request.resource.data.districtId)));
       allow update: if signedIn() && resource.data.userId == request.auth.uid &&
