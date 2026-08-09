@@ -31,6 +31,7 @@ import { createCoordinatorStructure, createInitialStructure, listStructures, typ
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
 import { useStudentProgress } from './src/hooks/useStudentProgress';
+import { getPresenceTheme, updatePresenceTheme, type PresenceTheme } from './src/services/presenceTheme';
 import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEvents, type DistrictEvent } from './src/services/events';
 import { closeCurrentPeriod, exportPeriodClosure, listPeriodClosures, type PeriodClosure, type PeriodKind } from './src/services/periods';
 
@@ -213,33 +214,41 @@ function AttendanceScreen({ classId, userName }: { classId: string; userName: st
   const [sendError, setSendError] = useState('');
   const [attendanceCount, setAttendanceCount] = useState(0);
   const [currentStatus, setCurrentStatus] = useState('');
-  const loadAttendance = () => { if (auth?.currentUser) listMyAttendance(auth.currentUser.uid).then(items => { setAttendanceCount(items.filter(item => item.status === 'approved').length); setCurrentStatus(items[0]?.status ?? ''); }).catch(() => undefined); };
+  const [approvedWeeks, setApprovedWeeks] = useState<number[]>([]);
+  const [presenceTheme, setPresenceTheme] = useState<PresenceTheme>('mountain');
+  const now = new Date();
+  const quarter = Math.floor(now.getMonth() / 3) + 1;
+  const quarterStart = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
+  const currentWeek = Math.min(13, Math.floor((now.getTime() - quarterStart.getTime()) / (7 * 86400000)) + 1);
+  const theme = ({ mountain: { title: 'Rumo ao topo! 🏔️', intro: 'Cada presença leva seu avatar mais perto do cume.', goal: '🏆 CUME', color: '#DCEDE9' }, ocean: { title: 'Navegando juntos! ⛵', intro: 'Cada presença aproxima sua embarcação da ilha.', goal: '🏝️ ILHA', color: '#DCEFFA' }, journey: { title: 'Jornada da fé! 🧭', intro: 'Cada presença abre uma nova etapa do caminho.', goal: '⭐ DESTINO', color: '#F8E8C8' }, garden: { title: 'Cultivando a fé! 🌱', intro: 'Cada presença faz o jardim da turma florescer.', goal: '🌻 JARDIM', color: '#E3F0D8' } } as const)[presenceTheme];
+  const loadAttendance = () => { if (auth?.currentUser) listMyAttendance(auth.currentUser.uid).then(items => { const periodItems = items.filter(item => item.quarter === quarter && item.year === now.getFullYear()); const weeks = periodItems.filter(item => item.status === 'approved').map(item => item.week ?? 0); setApprovedWeeks(weeks); setAttendanceCount(weeks.length); setCurrentStatus(periodItems.find(item => item.week === currentWeek)?.status ?? ''); }).catch(() => undefined); };
   useEffect(loadAttendance, [classId]);
+  useEffect(() => { if (classId) getPresenceTheme(classId).then(setPresenceTheme).catch(() => undefined); }, [classId]);
   const requestAttendance = async () => {
     if (!firebaseEnabled) return setSent(true);
     if (!auth?.currentUser || !classId) return setSendError('Você precisa estar em uma classe aprovada.');
     setSendError('');
-    try { await submitAttendance({ userId: auth.currentUser.uid, userName, classId, week: 7, quarter: 3, year: new Date().getFullYear() }); setSent(true); setCurrentStatus('pending'); }
+    try { await submitAttendance({ userId: auth.currentUser.uid, userName, classId, week: currentWeek, quarter, year: now.getFullYear() }); setSent(true); setCurrentStatus('pending'); }
     catch (error) { setSendError(error instanceof Error ? error.message : 'Não foi possível solicitar a presença.'); }
   };
   return (
     <View style={styles.pagePad}>
-      <Text style={styles.pageEyebrow}>TRIMESTRE 3 · SEMANA 7</Text>
-      <Text style={styles.pageTitle}>Rumo ao topo! 🏔️</Text>
-      <Text style={styles.pageIntro}>Cada presença leva seu avatar mais perto do cume.</Text>
-      <View style={styles.mountainCard}>
-        <View style={styles.summit}><Text style={styles.summitText}>🏆 CUME</Text></View>
+      <Text style={styles.pageEyebrow}>TRIMESTRE {quarter} · SEMANA {currentWeek}</Text>
+      <Text style={styles.pageTitle}>{theme.title}</Text>
+      <Text style={styles.pageIntro}>{theme.intro}</Text>
+      <View style={[styles.mountainCard, { backgroundColor: theme.color }]}>
+        <View style={styles.summit}><Text style={styles.summitText}>{theme.goal}</Text></View>
         <View style={styles.trail} />
-        {[13, 11, 9, 7, 5, 3, 1].map((week, index) => (
-          <View key={week} style={[styles.checkpoint, { top: 55 + index * 47, left: index % 2 === 0 ? '64%' : '27%' }, week === 7 && styles.currentCheckpoint]}>
-            <Text style={styles.checkpointText}>{week === 7 ? 'D' : week}</Text>
+        {[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((week, index) => (
+          <View key={week} style={[styles.checkpoint, { top: 48 + index * 25, left: index % 2 === 0 ? '60%' : '32%' }, week === currentWeek && styles.currentCheckpoint, approvedWeeks.includes(week) && styles.approvedCheckpoint]}>
+            <Text style={styles.checkpointText}>{approvedWeeks.includes(week) ? '✓' : week === currentWeek ? 'D' : week}</Text>
           </View>
         ))}
       </View>
       <View style={styles.statsRow}>
         <View style={styles.stat}><Text style={styles.statValue}>{attendanceCount}</Text><Text style={styles.cardCaption}>presenças</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>54%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>+70</Text><Text style={styles.cardCaption}>pontos</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{Math.round((attendanceCount / 13) * 100)}%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>+{attendanceCount * 10}</Text><Text style={styles.cardCaption}>pontos</Text></View>
       </View>
       <Pressable style={[styles.primaryButton, (sent || currentStatus === 'pending' || currentStatus === 'approved') && styles.buttonDone]} disabled={currentStatus === 'pending' || currentStatus === 'approved'} onPress={requestAttendance}><Text style={styles.primaryButtonText}>{currentStatus === 'approved' ? '✓ Presença confirmada' : sent || currentStatus === 'pending' ? '✓ Aguardando confirmação' : 'Solicitar confirmação de presença'}</Text></Pressable>
       {(sent || currentStatus === 'pending') && <Text style={styles.pendingHint}>Seu diretor recebeu a solicitação e confirmará sua presença.</Text>}
@@ -728,6 +737,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const [activityDescription, setActivityDescription] = useState('Uma programação especial para fortalecer a amizade e a fé da nossa base.');
   const [activityPoints, setActivityPoints] = useState('20');
   const [directedActivities, setDirectedActivities] = useState<ClassActivity[]>([]);
+  const [selectedPresenceTheme, setSelectedPresenceTheme] = useState<PresenceTheme>('mountain');
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir') || title.includes('Moderar');
   const isContent = title.includes('Conteúdo');
@@ -741,6 +751,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isPeriodClosure = title.includes('Encerrar período');
   const isChallengeCreation = title === 'Desafio mensal';
   const isClassActivity = title === 'Atividades externas';
+  const isPresenceTheme = title === 'Tema da presença';
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   useEffect(() => { if (isClassActivity) listDirectedActivities().then(setDirectedActivities).catch(() => undefined); }, [isClassActivity]);
@@ -786,6 +797,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       if (firebaseEnabled && isChallengeCreation) { await submitClassChallenge({ title: lessonTitle, description: challengeDescription, evidence: challengeEvidence, bonusPoints: Number(challengePoints) || 100 }); setMemberNotice('Desafio enviado ao coordenador para validação'); }
       if (firebaseEnabled && isClassActivity) { await createClassActivity({ title: lessonTitle, description: activityDescription, location: eventLocation, dateLabel: eventDate, points: Number(activityPoints) || 20 }); setDirectedActivities(await listDirectedActivities()); setMemberNotice('Atividade publicada para a sua base'); }
+      if (firebaseEnabled && isPresenceTheme) { await updatePresenceTheme(selectedPresenceTheme); setMemberNotice('Tema da corrida atualizado para toda a base'); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
@@ -833,6 +845,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       {isPeriodClosure && <PeriodClosurePanel />}
       {isChallengeCreation && <View style={styles.formCard}><AuthField label="Nome do desafio" placeholder="Ex.: Corrente do bem" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Missão da turma" placeholder="Explique o que deve ser realizado" value={challengeDescription} onChangeText={setChallengeDescription} /><AuthField label="Evidência realizada" placeholder="Conte como a turma concluiu a missão" value={challengeEvidence} onChangeText={setChallengeEvidence} /><AuthField label="Pontos extras da base" placeholder="100" value={challengePoints} onChangeText={setChallengePoints} /><Text style={styles.manageCopy}>O coordenador distrital analisará a evidência antes de liberar os pontos e publicar no mural.</Text></View>}
       {isClassActivity && <><View style={styles.formCard}><AuthField label="Nome da atividade" placeholder="Ex.: Piquenique da base" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Descrição" placeholder="Explique a programação" value={activityDescription} onChangeText={setActivityDescription} /><AuthField label="Local" placeholder="Igreja ou endereço" value={eventLocation} onChangeText={setEventLocation} /><AuthField label="Data e horário" placeholder="Ex.: 16 de agosto · 15h" value={eventDate} onChangeText={setEventDate} /><AuthField label="Pontos por participação" placeholder="20" value={activityPoints} onChangeText={setActivityPoints} /></View><Text style={styles.sectionTitle}>Atividades publicadas</Text>{directedActivities.map(activity => <View key={activity.id} style={styles.formCard}><Text style={styles.manageTitle}>{activity.title}</Text><Text style={styles.manageCopy}>{activity.dateLabel} · {activity.location}</Text><Text style={styles.challengeStatus}>{activity.participantCount ?? 0} participante(s) confirmado(s)</Text></View>)}</>}
+      {isPresenceTheme && <View style={styles.formCard}><Text style={styles.sectionTitle}>Escolha a jornada do trimestre</Text><Text style={styles.manageCopy}>O tema muda a aparência da trilha para todos os adolescentes da base.</Text><View style={styles.themeGrid}>{([{ key: 'mountain', icon: '🏔️', label: 'Montanha' }, { key: 'ocean', icon: '⛵', label: 'Oceano' }, { key: 'journey', icon: '🧭', label: 'Jornada' }, { key: 'garden', icon: '🌱', label: 'Jardim' }] as Array<{ key: PresenceTheme; icon: string; label: string }>).map(item => <Pressable key={item.key} onPress={() => setSelectedPresenceTheme(item.key)} style={[styles.themeCard, selectedPresenceTheme === item.key && styles.themeCardActive]}><Text style={styles.themeIcon}>{item.icon}</Text><Text style={styles.manageTitle}>{item.label}</Text>{selectedPresenceTheme === item.key && <Text style={styles.correctLabel}>SELECIONADO</Text>}</Pressable>)}</View></View>}
       {isApproval && <>{displayApprovals.length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma solicitação pendente</Text><Text style={styles.manageCopy}>Os novos pedidos de liderança aparecerão aqui automaticamente.</Text></View>}{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable>{!done && <Pressable onPress={() => rejectItem(item)}><Text style={styles.contactLink}>Recusar</Text></Pressable>}</View></View>; })}</>}
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
@@ -861,12 +874,12 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       ].map(([name, copy, level, color]) => <View key={name} style={styles.riskCard}><View style={[styles.riskLine, { backgroundColor: color }]} /><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><View><Text style={[styles.riskLevel, { color }]}>{level}</Text><Pressable onPress={() => setMemberNotice(`Lembrete preparado para ${name}`)}><Text style={styles.contactLink}>Lembrar</Text></Pressable></View></View>)}</>}
       {memberNotice !== '' && <Text style={styles.successNotice}>✓ {memberNotice}</Text>}
       {actionError !== '' && <Text style={styles.authError}>{actionError}</Text>}
-      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && !isChallengeCreation && !isClassActivity && <>
+      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && !isChallengeCreation && !isClassActivity && !isPresenceTheme && <>
         <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>{classManagement.inviteCode || 'VIVA-7429'}</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton} onPress={() => runMembershipAction('regenerateCode')}><Text style={styles.copyButtonText}>Gerar novo código</Text></Pressable></View>
         {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
         {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
-      {!isApproval && !isReport && !isStructure && !isPeriodClosure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isClassActivity ? 'Publicar atividade' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && !isPeriodClosure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isPresenceTheme ? 'Aplicar tema à base' : isClassActivity ? 'Publicar atividade' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }
@@ -894,6 +907,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', ''],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
       ['⚑', 'Atividades externas', 'Criar programações para a própria base', ''],
+      ['🏔️', 'Tema da presença', 'Escolher a jornada trimestral da base', ''],
     ]
     : role === 'coordenador'
       ? [
@@ -1042,11 +1056,11 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: colors.coral, borderRadius: 16, minHeight: 52, alignItems: 'center', justifyContent: 'center', marginTop: 13 }, primaryButtonText: { color: colors.white, fontSize: 14, fontWeight: '900' }, buttonDone: { backgroundColor: colors.tealMedium }, buttonDisabled: { opacity: 0.4 },
   mountainCard: { height: 380, backgroundColor: '#DCEDE9', borderRadius: 24, overflow: 'hidden', position: 'relative', marginBottom: 14 },
   trail: { position: 'absolute', top: 62, bottom: 25, left: '49%', width: 5, borderRadius: 4, backgroundColor: '#B8CFC7', transform: [{ rotate: '12deg' }] }, summit: { position: 'absolute', top: 20, alignSelf: 'center', backgroundColor: colors.gold, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 }, summitText: { color: colors.teal, fontSize: 10, fontWeight: '900' },
-  checkpoint: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: colors.white, borderWidth: 3, borderColor: '#B8CFC7', alignItems: 'center', justifyContent: 'center' }, currentCheckpoint: { width: 46, height: 46, borderRadius: 23, marginLeft: -6, marginTop: -6, backgroundColor: colors.coral, borderColor: colors.white, shadowOpacity: 0.18, shadowRadius: 8 }, checkpointText: { fontSize: 11, fontWeight: '900', color: colors.teal },
+  checkpoint: { position: 'absolute', width: 28, height: 28, borderRadius: 14, backgroundColor: colors.white, borderWidth: 3, borderColor: '#B8CFC7', alignItems: 'center', justifyContent: 'center' }, currentCheckpoint: { width: 38, height: 38, borderRadius: 19, marginLeft: -5, marginTop: -5, backgroundColor: colors.coral, borderColor: colors.white, shadowOpacity: 0.18, shadowRadius: 8 }, approvedCheckpoint: { backgroundColor: colors.tealMedium, borderColor: colors.white }, checkpointText: { fontSize: 10, fontWeight: '900', color: colors.teal },
   statsRow: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 18, paddingVertical: 16, marginBottom: 22 }, stat: { flex: 1, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.line }, statValue: { color: colors.teal, fontSize: 20, fontWeight: '900', marginBottom: 3 },
   quizHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }, quizPoints: { color: '#A36B0A', fontWeight: '900' },
   option: { minHeight: 62, borderRadius: 17, padding: 12, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 2, borderColor: 'transparent' }, optionSelected: { borderColor: colors.coral, backgroundColor: '#FFF7F4' }, optionLetter: { width: 37, height: 37, borderRadius: 12, backgroundColor: colors.sage, color: colors.teal, textAlign: 'center', lineHeight: 37, fontWeight: '900', marginRight: 13 }, optionLetterSelected: { backgroundColor: colors.coral, color: colors.white }, optionText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
-  profileTop: { alignItems: 'center', paddingVertical: 15 }, profileAvatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.gold, borderWidth: 5, borderColor: '#F7E3BA', alignItems: 'center', justifyContent: 'center' }, profileAvatarText: { color: colors.teal, fontSize: 36, fontWeight: '900' }, profileName: { color: colors.ink, fontSize: 24, fontWeight: '900', marginTop: 12 }, profileClass: { color: colors.coral, fontWeight: '800', marginTop: 4, fontSize: 12 }, profileStatus: { color: colors.muted, marginTop: 10, fontStyle: 'italic' }, colorChoices: { flexDirection: 'row', gap: 12, marginBottom: 15 }, colorChoice: { width: 34, height: 34, borderRadius: 17 }, colorChoiceActive: { borderWidth: 4, borderColor: colors.ink }, profilePeerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 14, marginBottom: 9 },
+  profileTop: { alignItems: 'center', paddingVertical: 15 }, profileAvatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.gold, borderWidth: 5, borderColor: '#F7E3BA', alignItems: 'center', justifyContent: 'center' }, profileAvatarText: { color: colors.teal, fontSize: 36, fontWeight: '900' }, profileName: { color: colors.ink, fontSize: 24, fontWeight: '900', marginTop: 12 }, profileClass: { color: colors.coral, fontWeight: '800', marginTop: 4, fontSize: 12 }, profileStatus: { color: colors.muted, marginTop: 10, fontStyle: 'italic' }, colorChoices: { flexDirection: 'row', gap: 12, marginBottom: 15 }, colorChoice: { width: 34, height: 34, borderRadius: 17 }, colorChoiceActive: { borderWidth: 4, borderColor: colors.ink }, profilePeerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 14, marginBottom: 9 }, themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }, themeCard: { width: '47%', minHeight: 105, borderRadius: 16, backgroundColor: colors.sage, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' }, themeCardActive: { backgroundColor: '#FFF3DB', borderColor: colors.gold }, themeIcon: { fontSize: 30, marginBottom: 7 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, marginBottom: 24 }, badge: { width: '31%', minHeight: 112, borderRadius: 17, backgroundColor: '#F8E8C8', alignItems: 'center', justifyContent: 'center', padding: 7, borderWidth: 1, borderColor: '#EED49D' }, badgeLocked: { backgroundColor: '#E8ECE8', borderColor: '#D1D8D3', opacity: 0.75 }, badgeText: { textAlign: 'center', color: colors.teal, fontSize: 11, lineHeight: 20, fontWeight: '800' }, badgeDetail: { textAlign: 'center', color: colors.muted, fontSize: 7, marginTop: 4 },
   nav: { height: 76, backgroundColor: colors.white, flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, paddingBottom: 5 },
   navItem: { flex: 1, alignItems: 'center' }, navIconWrap: { width: 34, height: 30, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: '#DCEDE9' }, navIcon: { color: '#81908A', fontSize: 17, fontWeight: '900' }, navIconTextActive: { color: colors.teal }, navLabel: { color: '#81908A', fontSize: 9, fontWeight: '700', marginTop: 3 }, navLabelActive: { color: colors.teal, fontWeight: '900' },

@@ -96,7 +96,7 @@ export async function submitAttendance(input: {
 export async function listMyAttendance(userId: string) {
   const firestore = requireFirestore();
   const result = await getDocs(query(collection(firestore, 'attendance'), where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(20)));
-  return result.docs.map(item => ({ id: item.id, ...(item.data() as { status?: string; week?: number }) }));
+  return result.docs.map(item => ({ id: item.id, ...(item.data() as { status?: string; week?: number; quarter?: number; year?: number }) }));
 }
 
 export async function reviewAttendance(recordId: string, reviewerId: string, approved: boolean) {
