@@ -24,11 +24,12 @@ export async function closeCurrentPeriod(kind: PeriodKind): Promise<PeriodClosur
   if ((await getDoc(doc(db, 'periodClosures', closureId))).exists()) throw new Error('Este período já foi encerrado.');
   const start = kind === 'quarter' ? new Date(year, (quarter - 1) * 3, 1) : new Date(year, 0, 1);
   const end = kind === 'quarter' ? new Date(year, quarter * 3, 1) : new Date(year + 1, 0, 1);
-  const [members, studies, attendance, attempts] = await Promise.all([
+  const [members, studies, attendance, attempts, activityParticipants] = await Promise.all([
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true))),
     getDocs(query(collection(db, 'studyRecords'), where('classId', '==', classId))),
     getDocs(query(collection(db, 'attendance'), where('classId', '==', classId))),
     getDocs(query(collection(db, 'quizAttempts'), where('classId', '==', classId), where('status', '==', 'reviewed'))),
+    getDocs(query(collection(db, 'activityParticipants'), where('classId', '==', classId))),
   ]);
   const inPeriod = (value: unknown) => { const date = dateOf(value); return !!date && date >= start && date < end; };
   const entries = members.docs.map(member => {
@@ -36,10 +37,12 @@ export async function closeCurrentPeriod(kind: PeriodKind): Promise<PeriodClosur
     const userStudies = studies.docs.filter(item => item.data().userId === userId && inPeriod(item.data().createdAt));
     const userAttendance = attendance.docs.filter(item => item.data().userId === userId && item.data().status === 'approved' && inPeriod(item.data().createdAt));
     const userAttempts = attempts.docs.filter(item => item.data().userId === userId && inPeriod(item.data().createdAt));
+    const userActivities = activityParticipants.docs.filter(item => item.data().userId === userId && item.data().status === 'confirmed' && inPeriod(item.data().confirmedAt));
     const correctQuizAnswers = userAttempts.reduce((total, item) => total + Number(item.data().correctAnswers ?? 0), 0);
     const summaries = userStudies.length;
     const presence = userAttendance.length;
-    return { userId, name: member.data().name ?? 'Adolescente', summaries, activities: summaries + presence + userAttempts.length, correctQuizAnswers, attendance: presence, points: summaries * 20 + presence * 10 + correctQuizAnswers * 10, position: 0 };
+    const activityPoints = userActivities.reduce((total, item) => total + Number(item.data().points ?? 0), 0);
+    return { userId, name: member.data().name ?? 'Adolescente', summaries, activities: userActivities.length, correctQuizAnswers, attendance: presence, points: summaries * 20 + presence * 10 + correctQuizAnswers * 10 + activityPoints, position: 0 };
   }).sort((a, b) => b.points - a.points);
   let previousPoints: number | null = null;
   let position = 0;

@@ -25,6 +25,7 @@ import { useClassManagement, usePendingApprovals } from './src/hooks/useLeadersh
 import type { ApprovalType } from './src/hooks/useLeadershipData';
 import { createFlashcard, listPublishedFlashcards, type Flashcard } from './src/services/flashcards';
 import { listApprovedChallenges, submitClassChallenge, type ClassChallenge } from './src/services/challenges';
+import { createClassActivity, joinClassActivity, listClassActivities, listDirectedActivities, type ClassActivity } from './src/services/activities';
 import { listClassProfiles, listMuralPosts, reactToMuralPost, updateMyPublicProfile, type MuralPost, type PublicProfile } from './src/services/community';
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
@@ -298,7 +299,7 @@ function QuizScreen({ classId }: { classId: string }) {
 }
 
 function ProfileScreen({ name, className, classId, districtId, initialStatus, initialThemeColor, onExit }: { name: string; className: string; classId: string; districtId: string; initialStatus: string; initialThemeColor: string; onExit: () => Promise<void> }) {
-  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes' | 'eventos' | 'colegas'>('hub');
+  const [communityView, setCommunityView] = useState<'hub' | 'ranking' | 'mural' | 'flashcards' | 'desafios' | 'hall' | 'notificacoes' | 'eventos' | 'colegas' | 'atividades'>('hub');
   const [events, setEvents] = useState<DistrictEvent[]>([]);
   const [confirmedEvents, setConfirmedEvents] = useState<string[]>([]);
   const [rankingHistory, setRankingHistory] = useState<Array<{ id: string; weekLabel?: string; entries?: Array<{ userId: string; name: string; score: number; position: number }> }>>([]);
@@ -314,6 +315,8 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
   const [classProfiles, setClassProfiles] = useState<PublicProfile[]>([]);
   const [muralPosts, setMuralPosts] = useState<MuralPost[]>([]);
   const [classChallenges, setClassChallenges] = useState<ClassChallenge[]>([]);
+  const [classActivities, setClassActivities] = useState<ClassActivity[]>([]);
+  const [joinedActivities, setJoinedActivities] = useState<string[]>([]);
   useEffect(() => { if (initialStatus) setPublicStatus(initialStatus); }, [initialStatus]);
   useEffect(() => { if (initialThemeColor) setProfileColor(initialThemeColor); }, [initialThemeColor]);
   useEffect(() => { if (districtId) listDistrictEvents(districtId).then(setEvents).catch(() => undefined); }, [districtId]);
@@ -323,6 +326,7 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
   useEffect(() => { if (classId) listClassProfiles(classId).then(setClassProfiles).catch(() => undefined); }, [classId]);
   useEffect(() => { if (classId) listMuralPosts(classId).then(setMuralPosts).catch(() => undefined); }, [classId]);
   useEffect(() => { if (classId) listApprovedChallenges(classId).then(setClassChallenges).catch(() => undefined); }, [classId]);
+  useEffect(() => { if (classId) listClassActivities(classId).then(setClassActivities).catch(() => undefined); }, [classId]);
   const savePublicProfile = async () => {
     setProfileNotice('');
     try { await updateMyPublicProfile(publicStatus, profileColor); setProfileNotice('Perfil atualizado para sua turma!'); }
@@ -351,6 +355,7 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
       notificacoes: { title: 'Notificações', eyebrow: 'FIQUE POR DENTRO', copy: 'Atualizações importantes da sua jornada.' },
       eventos: { title: 'Encontros', eyebrow: 'AGENDA DISTRITAL', copy: 'Próximos encontros preparados pelo seu coordenador.' },
       colegas: { title: 'Minha turma', eyebrow: 'PERFIS DA BASE', copy: 'Conheça melhor quem caminha com você, sem mensagens privadas.' },
+      atividades: { title: 'Atividades da base', eyebrow: 'VAMOS PARTICIPAR', copy: 'Programações externas organizadas pelo diretor da sua turma.' },
     }[communityView];
     return (
       <View style={styles.pagePad}>
@@ -372,6 +377,7 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
         {communityView === 'notificacoes' && <>{(live.notifications.length > 0 ? live.notifications.map(item => [item.type.toUpperCase(), item.title, item.body, item.read ? 'read' : 'unread']) : [['NOVO', 'A lição 5 já está disponível', 'Comece seu estudo desta semana · agora', 'unread'], ['QUIZ', 'Quiz liberado!', 'Você tem até domingo para responder · há 2h', 'read'], ['NOTA', 'Seu resumo foi avaliado', 'O diretor enviou um retorno privado · ontem', 'read'], ['EVENTO', 'Conexão Distrital', '16 de agosto, às 15h · há 2 dias', 'read']]).map(([tag, title, copy, status]) => <View key={`${tag}_${title}`} style={[styles.notificationCard, status === 'unread' && styles.notificationUnread]}><Text style={styles.notificationTag}>{tag}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{title}</Text><Text style={styles.manageCopy}>{copy}</Text></View>{status === 'unread' && <View style={styles.unreadDot} />}</View>)}</>}
         {communityView === 'eventos' && <>{events.length === 0 && <Text style={styles.pageIntro}>Nenhum encontro publicado para seu distrito.</Text>}{events.map(event => <View key={event.id} style={styles.formCard}><Text style={styles.manageTitle}>{event.title}</Text><Text style={styles.manageCopy}>{event.dateLabel} · {event.location}</Text><Pressable style={[styles.approveButton, confirmedEvents.includes(event.id) && styles.approveButtonDone]} disabled={confirmedEvents.includes(event.id)} onPress={async () => { await confirmEventAttendance(event); setConfirmedEvents(items => [...items, event.id]); }}><Text style={styles.approveButtonText}>{confirmedEvents.includes(event.id) ? '✓ Participação confirmada' : 'Confirmar participação'}</Text></Pressable></View>)}</>}
         {communityView === 'colegas' && <>{classProfiles.length === 0 && <Text style={styles.pageIntro}>Os perfis dos colegas aparecerão quando a entrada deles na turma for aprovada.</Text>}{classProfiles.map(profile => <View key={profile.id} style={styles.profilePeerCard}><View style={[styles.rankAvatar, { backgroundColor: profile.themeColor ?? colors.gold }]}><Text style={styles.rankAvatarText}>{profile.name[0]?.toUpperCase()}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{profile.name}</Text><Text style={styles.manageCopy}>“{profile.status || 'Caminhando com propósito.'}”</Text></View></View>)}</>}
+        {communityView === 'atividades' && <>{classActivities.length === 0 && <Text style={styles.pageIntro}>Nenhuma atividade externa foi publicada para sua base.</Text>}{classActivities.map(activity => { const joined = joinedActivities.includes(activity.id); return <View key={activity.id} style={styles.formCard}><Pill tone="teal">ATIVIDADE DA BASE</Pill><Text style={styles.challengeTitle}>{activity.title}</Text><Text style={styles.challengeCopy}>{activity.description}</Text><Text style={styles.manageCopy}>{activity.dateLabel} · {activity.location}</Text><Text style={styles.challengePoints}>+{activity.points} pontos ao participar</Text><Pressable disabled={joined} style={[styles.authPrimary, joined && styles.buttonDone]} onPress={async () => { await joinClassActivity(activity, name); setJoinedActivities(items => [...items, activity.id]); }}><Text style={styles.authPrimaryText}>{joined ? '✓ Participação confirmada' : 'Eu vou participar'}</Text></Pressable></View>; })}</>}
       </View>
     );
   }
@@ -392,7 +398,7 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
       <Text style={styles.sectionTitle}>Comunidade</Text>
       <View style={styles.communityGrid}>
         {[
-          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['colegas', '☺', 'Minha turma', '#DCE0FA'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'], ['eventos', '◉', 'Encontros', '#F8E8C8'], ['hall', '★', 'Hall da fama', '#E4E0FA'], ['notificacoes', '●', 'Notificações', '#DCEDE9'],
+          ['ranking', '🏆', 'Rankings', '#F8E8C8'], ['mural', '◉', 'Mural', '#DCEDE9'], ['colegas', '☺', 'Minha turma', '#DCE0FA'], ['flashcards', '▤', 'Flashcards', '#FFF1A8'], ['desafios', '◆', 'Desafios', '#FBE0D6'], ['atividades', '⚑', 'Atividades', '#CFEDE5'], ['eventos', '◉', 'Encontros', '#F8E8C8'], ['hall', '★', 'Hall da fama', '#E4E0FA'], ['notificacoes', '●', 'Notificações', '#DCEDE9'],
         ].map(([key, icon, label, bg]) => <Pressable key={key} style={[styles.communityCard, { backgroundColor: bg }]} onPress={() => setCommunityView(key as typeof communityView)}><Text style={styles.communityIcon}>{icon}</Text><Text style={styles.communityLabel}>{label}</Text><Text style={styles.communityLink}>Abrir ›</Text></Pressable>)}
       </View>
       <Text style={styles.sectionTitle}>Conquistas</Text>
@@ -719,6 +725,9 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const [challengeDescription, setChallengeDescription] = useState('Uma ação que envolva toda a base e ajude a comunidade.');
   const [challengeEvidence, setChallengeEvidence] = useState('Descreva aqui o que a turma realizou.');
   const [challengePoints, setChallengePoints] = useState('100');
+  const [activityDescription, setActivityDescription] = useState('Uma programação especial para fortalecer a amizade e a fé da nossa base.');
+  const [activityPoints, setActivityPoints] = useState('20');
+  const [directedActivities, setDirectedActivities] = useState<ClassActivity[]>([]);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
   const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir') || title.includes('Moderar');
   const isContent = title.includes('Conteúdo');
@@ -731,8 +740,10 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isQuizRanking = title.includes('ranking semanal');
   const isPeriodClosure = title.includes('Encerrar período');
   const isChallengeCreation = title === 'Desafio mensal';
+  const isClassActivity = title === 'Atividades externas';
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
+  useEffect(() => { if (isClassActivity) listDirectedActivities().then(setDirectedActivities).catch(() => undefined); }, [isClassActivity]);
   const approvalType: ApprovalType | null = title.includes('flashcards') ? 'flashcard' : title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
   const liveApprovals = usePendingApprovals(approvalType);
   const classManagement = useClassManagement();
@@ -774,6 +785,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       if (firebaseEnabled && isEvent) { await createDistrictEvent({ title: lessonTitle, location: eventLocation, dateLabel: eventDate }); setDistrictEvents(await listCurrentDistrictEvents()); }
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       if (firebaseEnabled && isChallengeCreation) { await submitClassChallenge({ title: lessonTitle, description: challengeDescription, evidence: challengeEvidence, bonusPoints: Number(challengePoints) || 100 }); setMemberNotice('Desafio enviado ao coordenador para validação'); }
+      if (firebaseEnabled && isClassActivity) { await createClassActivity({ title: lessonTitle, description: activityDescription, location: eventLocation, dateLabel: eventDate, points: Number(activityPoints) || 20 }); setDirectedActivities(await listDirectedActivities()); setMemberNotice('Atividade publicada para a sua base'); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
@@ -820,6 +832,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       {isQuizRanking && <View style={styles.formCard}><Text style={styles.pageEyebrow}>CONTROLE DO DIRETOR</Text><Text style={styles.pageTitle}>Publique quando a turma estiver reunida.</Text><Text style={styles.pageIntro}>As notas continuam privadas até você liberar. Ao publicar, todos verão o ranking semanal ao mesmo tempo.</Text><View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>STATUS ATUAL</Text><Text style={styles.inviteCode}>🔒 PRIVADO</Text><Text style={styles.cardCaption}>Corrija todas as respostas antes de liberar o placar.</Text></View></View>}
       {isPeriodClosure && <PeriodClosurePanel />}
       {isChallengeCreation && <View style={styles.formCard}><AuthField label="Nome do desafio" placeholder="Ex.: Corrente do bem" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Missão da turma" placeholder="Explique o que deve ser realizado" value={challengeDescription} onChangeText={setChallengeDescription} /><AuthField label="Evidência realizada" placeholder="Conte como a turma concluiu a missão" value={challengeEvidence} onChangeText={setChallengeEvidence} /><AuthField label="Pontos extras da base" placeholder="100" value={challengePoints} onChangeText={setChallengePoints} /><Text style={styles.manageCopy}>O coordenador distrital analisará a evidência antes de liberar os pontos e publicar no mural.</Text></View>}
+      {isClassActivity && <><View style={styles.formCard}><AuthField label="Nome da atividade" placeholder="Ex.: Piquenique da base" value={lessonTitle} onChangeText={setLessonTitle} /><AuthField label="Descrição" placeholder="Explique a programação" value={activityDescription} onChangeText={setActivityDescription} /><AuthField label="Local" placeholder="Igreja ou endereço" value={eventLocation} onChangeText={setEventLocation} /><AuthField label="Data e horário" placeholder="Ex.: 16 de agosto · 15h" value={eventDate} onChangeText={setEventDate} /><AuthField label="Pontos por participação" placeholder="20" value={activityPoints} onChangeText={setActivityPoints} /></View><Text style={styles.sectionTitle}>Atividades publicadas</Text>{directedActivities.map(activity => <View key={activity.id} style={styles.formCard}><Text style={styles.manageTitle}>{activity.title}</Text><Text style={styles.manageCopy}>{activity.dateLabel} · {activity.location}</Text><Text style={styles.challengeStatus}>{activity.participantCount ?? 0} participante(s) confirmado(s)</Text></View>)}</>}
       {isApproval && <>{displayApprovals.length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma solicitação pendente</Text><Text style={styles.manageCopy}>Os novos pedidos de liderança aparecerão aqui automaticamente.</Text></View>}{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable>{!done && <Pressable onPress={() => rejectItem(item)}><Text style={styles.contactLink}>Recusar</Text></Pressable>}</View></View>; })}</>}
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
@@ -848,12 +861,12 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
       ].map(([name, copy, level, color]) => <View key={name} style={styles.riskCard}><View style={[styles.riskLine, { backgroundColor: color }]} /><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{name}</Text><Text style={styles.manageCopy}>{copy}</Text></View><View><Text style={[styles.riskLevel, { color }]}>{level}</Text><Pressable onPress={() => setMemberNotice(`Lembrete preparado para ${name}`)}><Text style={styles.contactLink}>Lembrar</Text></Pressable></View></View>)}</>}
       {memberNotice !== '' && <Text style={styles.successNotice}>✓ {memberNotice}</Text>}
       {actionError !== '' && <Text style={styles.authError}>{actionError}</Text>}
-      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && !isChallengeCreation && <>
+      {!isContent && !isQuiz && !isApproval && !isReport && !isEvent && !isStructure && !isRisk && !isChallengeCreation && !isClassActivity && <>
         <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>CÓDIGO ATUAL</Text><Text style={styles.inviteCode}>{classManagement.inviteCode || 'VIVA-7429'}</Text><Text style={styles.cardCaption}>Compartilhe somente com os membros da turma.</Text><Pressable style={styles.copyButton} onPress={() => runMembershipAction('regenerateCode')}><Text style={styles.copyButtonText}>Gerar novo código</Text></Pressable></View>
         {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
         {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
-      {!isApproval && !isReport && !isStructure && !isPeriodClosure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && !isPeriodClosure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isClassActivity ? 'Publicar atividade' : isChallengeCreation ? 'Enviar para validação' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }
@@ -880,6 +893,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', '3'],
       ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', ''],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
+      ['⚑', 'Atividades externas', 'Criar programações para a própria base', ''],
     ]
     : role === 'coordenador'
       ? [
