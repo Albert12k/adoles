@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function roleIs(role) { return signedIn() && profile().role == role; }
+    function roleIs(role) { return signedIn() && profile().role == role && profile().active != false; }
     function admin() { return roleIs('admin'); }
     function coordinatorOf(districtId) { return admin() || (roleIs('coordinator') && profile().districtId == districtId); }
     function directorOf(classId) { return admin() || (roleIs('director') &&
@@ -55,6 +55,10 @@ service cloud.firestore {
       allow get: if true;
       allow list: if admin();
       allow create, update: if admin();
+    }
+
+    match /coordinatorAudit/{auditId} {
+      allow read, create: if admin();
     }
 
     match /classJoinRequests/{requestId} {

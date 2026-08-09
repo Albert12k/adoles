@@ -52,7 +52,13 @@ export async function getRegistrationOptions() {
 
 export async function loginUser(email: string, password: string) {
   const services = requireFirebase();
-  return (await signInWithEmailAndPassword(services.auth, email, password)).user;
+  const user = (await signInWithEmailAndPassword(services.auth, email, password)).user;
+  const profile = await getDoc(doc(services.db, 'users', user.uid));
+  if (profile.exists() && profile.data().active === false) {
+    await signOut(services.auth);
+    throw new Error('Este acesso está suspenso. Procure o administrador geral.');
+  }
+  return user;
 }
 
 export async function logoutUser() {
@@ -73,5 +79,9 @@ export function subscribeToAuth(callback: (user: User | null) => void) {
 export async function getUserRole(userId: string): Promise<UserRole> {
   const services = requireFirebase();
   const snapshot = await getDoc(doc(services.db, 'users', userId));
+  if (snapshot.exists() && snapshot.data().active === false) {
+    await signOut(services.auth);
+    throw new Error('Acesso suspenso.');
+  }
   return (snapshot.data()?.role as UserRole | undefined) ?? 'student';
 }
