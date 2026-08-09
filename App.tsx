@@ -30,6 +30,7 @@ import { listClassProfiles, listMuralPosts, reactToMuralPost, updateMyPublicProf
 import { createCoordinatorStructure, createInitialStructure, listStructures, type StructureItem } from './src/services/structure';
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
+import { useStudentProgress } from './src/hooks/useStudentProgress';
 import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEvents, type DistrictEvent } from './src/services/events';
 import { closeCurrentPeriod, exportPeriodClosure, listPeriodClosures, type PeriodClosure, type PeriodKind } from './src/services/periods';
 
@@ -345,6 +346,7 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
     } catch (error) { setFlashNotice(error instanceof Error ? error.message : 'Não foi possível enviar o cartão.'); }
   };
   const live = useLiveDashboard();
+  const progress = useStudentProgress();
   if (communityView !== 'hub') {
     const content = {
       ranking: { title: 'Rankings', eyebrow: 'PONTUAÇÃO DO TRIMESTRE', copy: 'Classificação normalizada para valorizar participação, não o tamanho da classe.' },
@@ -391,9 +393,9 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
       </View>
       <View style={styles.formCard}><Text style={styles.sectionTitle}>Personalize seu perfil</Text><AuthField label="Frase de status" placeholder="Uma frase curta sobre você" value={publicStatus} onChangeText={setPublicStatus} /><Text style={styles.authLabel}>Cor do perfil</Text><View style={styles.colorChoices}>{['#E7A93D', '#E8683F', '#16504D', '#7769A8', '#4E88A8'].map(color => <Pressable key={color} onPress={() => setProfileColor(color)} style={[styles.colorChoice, { backgroundColor: color }, profileColor === color && styles.colorChoiceActive]} />)}</View><Pressable style={styles.approveButton} onPress={savePublicProfile}><Text style={styles.approveButtonText}>Salvar meu perfil</Text></Pressable>{profileNotice !== '' && <Text style={styles.manageCopy}>{profileNotice}</Text>}</View>
       <View style={styles.statsRow}>
-        <View style={styles.stat}><Text style={styles.statValue}>{live.points ?? 420}</Text><Text style={styles.cardCaption}>pontos</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>#3</Text><Text style={styles.cardCaption}>na classe</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>4</Text><Text style={styles.cardCaption}>semanas</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.points}</Text><Text style={styles.cardCaption}>pontos</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.summaries}</Text><Text style={styles.cardCaption}>resumos</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{progress.streak}</Text><Text style={styles.cardCaption}>semanas seguidas</Text></View>
       </View>
       <Text style={styles.sectionTitle}>Comunidade</Text>
       <View style={styles.communityGrid}>
@@ -403,14 +405,12 @@ function ProfileScreen({ name, className, classId, districtId, initialStatus, in
       </View>
       <Text style={styles.sectionTitle}>Conquistas</Text>
       <View style={styles.badgeRow}>
-        {['🔥\nConstante', '📖\nLeitor', '⚡\nQuiz 10', '🏔️\nPresente'].map((badge) => (
-          <View key={badge} style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>
-        ))}
+        {progress.badges.map(badge => <View key={badge.label} style={[styles.badge, !badge.unlocked && styles.badgeLocked]}><Text style={styles.badgeText}>{badge.unlocked ? badge.icon : '🔒'}{`\n${badge.label}`}</Text><Text style={styles.badgeDetail}>{badge.detail}</Text></View>)}
       </View>
       <View style={styles.weekCard}>
-        <View style={styles.weekRow}><Text style={styles.weekTitle}>Evolução no trimestre</Text><Text style={styles.percent}>+18%</Text></View>
-        <Progress value={68} color={colors.coral} />
-        <Text style={[styles.cardCaption, { marginTop: 12 }]}>Seu engajamento cresceu nas últimas quatro semanas.</Text>
+        <View style={styles.weekRow}><Text style={styles.weekTitle}>Evolução nas últimas semanas</Text><Text style={styles.percent}>{progress.evolution > 0 ? '+' : ''}{progress.evolution}%</Text></View>
+        <Progress value={Math.max(0, Math.min(100, 50 + progress.evolution))} color={progress.evolution >= 0 ? colors.coral : colors.gold} />
+        <Text style={[styles.cardCaption, { marginTop: 12 }]}>{progress.evolution > 0 ? 'Seu engajamento cresceu em relação às quatro semanas anteriores.' : progress.evolution < 0 ? 'Uma nova sequência de estudos pode recuperar seu ritmo.' : 'Continue participando para construir sua evolução.'}</Text>
       </View>
       <Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair da conta</Text></Pressable>
     </View>
@@ -1047,7 +1047,7 @@ const styles = StyleSheet.create({
   quizHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }, quizPoints: { color: '#A36B0A', fontWeight: '900' },
   option: { minHeight: 62, borderRadius: 17, padding: 12, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 2, borderColor: 'transparent' }, optionSelected: { borderColor: colors.coral, backgroundColor: '#FFF7F4' }, optionLetter: { width: 37, height: 37, borderRadius: 12, backgroundColor: colors.sage, color: colors.teal, textAlign: 'center', lineHeight: 37, fontWeight: '900', marginRight: 13 }, optionLetterSelected: { backgroundColor: colors.coral, color: colors.white }, optionText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   profileTop: { alignItems: 'center', paddingVertical: 15 }, profileAvatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.gold, borderWidth: 5, borderColor: '#F7E3BA', alignItems: 'center', justifyContent: 'center' }, profileAvatarText: { color: colors.teal, fontSize: 36, fontWeight: '900' }, profileName: { color: colors.ink, fontSize: 24, fontWeight: '900', marginTop: 12 }, profileClass: { color: colors.coral, fontWeight: '800', marginTop: 4, fontSize: 12 }, profileStatus: { color: colors.muted, marginTop: 10, fontStyle: 'italic' }, colorChoices: { flexDirection: 'row', gap: 12, marginBottom: 15 }, colorChoice: { width: 34, height: 34, borderRadius: 17 }, colorChoiceActive: { borderWidth: 4, borderColor: colors.ink }, profilePeerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 17, padding: 14, marginBottom: 9 },
-  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 24 }, badge: { flex: 1, aspectRatio: 0.85, borderRadius: 17, backgroundColor: '#F8E8C8', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#EED49D' }, badgeText: { textAlign: 'center', color: colors.teal, fontSize: 11, lineHeight: 20, fontWeight: '800' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, marginBottom: 24 }, badge: { width: '31%', minHeight: 112, borderRadius: 17, backgroundColor: '#F8E8C8', alignItems: 'center', justifyContent: 'center', padding: 7, borderWidth: 1, borderColor: '#EED49D' }, badgeLocked: { backgroundColor: '#E8ECE8', borderColor: '#D1D8D3', opacity: 0.75 }, badgeText: { textAlign: 'center', color: colors.teal, fontSize: 11, lineHeight: 20, fontWeight: '800' }, badgeDetail: { textAlign: 'center', color: colors.muted, fontSize: 7, marginTop: 4 },
   nav: { height: 76, backgroundColor: colors.white, flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, paddingBottom: 5 },
   navItem: { flex: 1, alignItems: 'center' }, navIconWrap: { width: 34, height: 30, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: '#DCEDE9' }, navIcon: { color: '#81908A', fontSize: 17, fontWeight: '900' }, navIconTextActive: { color: colors.teal }, navLabel: { color: '#81908A', fontSize: 9, fontWeight: '700', marginTop: 3 }, navLabelActive: { color: colors.teal, fontWeight: '900' },
 });
