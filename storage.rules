@@ -27,7 +27,7 @@ service firebase.storage {
     match /weekly-content/{classId}/{fileName} {
       allow write: if managesClass(classId) && request.resource.size < 25 * 1024 * 1024 &&
         request.resource.contentType == 'application/pdf';
-      allow read: if signedIn() && classId in profile().classIds;
+      allow read: if signedIn() && (managesClass(classId) || classId in profile().classIds);
     }
 
     match /avatars/{userId}/{fileName} {

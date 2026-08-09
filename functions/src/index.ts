@@ -3,11 +3,13 @@ import { DocumentData, FieldValue, getFirestore, Timestamp } from 'firebase-admi
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { setGlobalOptions } from 'firebase-functions/v2/options';
 import { randomBytes } from 'node:crypto';
 
 initializeApp();
 const db = getFirestore();
 const region = 'southamerica-east1';
+setGlobalOptions({ region, maxInstances: 3 });
 
 export const joinClassByCode = onCall({ region }, async request => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar o convite.');
