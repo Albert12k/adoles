@@ -14,6 +14,22 @@ const quizWeek = (timestamp = Date.now()) => {
   return { weekKey: `${date.getFullYear()}-W${String(week).padStart(2, '0')}`, weekLabel: `Semana ${week} · ${date.getFullYear()}` };
 };
 
+async function notifyClass(classId: string, type: string, title: string, body: string) {
+  if (!db || !auth?.currentUser) return;
+  const members = await getDocs(query(collection(db, 'classMembers'), where('classId', '==', classId), where('active', '==', true), limit(300)));
+  const batch = writeBatch(db);
+  members.docs.filter(item => item.data().role !== 'director').forEach(member => {
+    const reference = doc(collection(db!, 'notifications'));
+    batch.set(reference, { userId: member.data().userId, classId, type, title, body, read: false, createdBy: auth!.currentUser!.uid, createdAt: serverTimestamp() });
+  });
+  await batch.commit();
+}
+
+async function notifyUser(userId: string, classId: string, type: string, title: string, body: string) {
+  if (!db || !auth?.currentUser) return;
+  await addDoc(collection(db, 'notifications'), { userId, classId, type, title, body, read: false, createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
+}
+
 export async function publishContent(input: { title: string; classId?: string; lessonPdfUrl?: string; bookPdfUrl?: string; week?: number; quarter?: number; year?: number }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar.');
   let classId = input.classId;
@@ -27,6 +43,7 @@ export async function publishContent(input: { title: string; classId?: string; l
     week: input.week ?? 1, quarter: input.quarter ?? 1, year: input.year ?? new Date().getFullYear(),
     createdBy: auth.currentUser.uid, publishedAt: serverTimestamp(),
   });
+  await notifyClass(classId, 'conteudo', 'Novo conteúdo semanal', `${input.title.trim()} já está disponível para estudo.`).catch(() => undefined);
   return { contentId: reference.id };
 }
 
@@ -50,6 +67,7 @@ export async function publishQuizContent(input: {
   batch.set(quizRef, { classId, title: input.title, ...week, active: true, releaseAt: input.releaseAt, closesAt: input.closesAt, questions: input.questions.map(({ type, prompt, options }) => ({ type, prompt, options })), createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
   batch.set(doc(db, 'quizAnswerKeys', quizRef.id), { classId, answers: input.questions.map(item => item.correctAnswer), types: input.questions.map(item => item.type), createdBy: auth.currentUser.uid });
   await batch.commit();
+  await notifyClass(classId, 'quiz', 'Novo quiz semanal', `${input.title} foi publicado para a sua base.`).catch(() => undefined);
   return { quizId: quizRef.id };
 }
 
@@ -82,10 +100,12 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   }
   if (type === 'quizAttempt') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para corrigir o quiz.');
+    let attemptUserId = ''; let attemptClassId = '';
     await runTransaction(db, async transaction => {
       const attemptRef = doc(db!, 'quizAttempts', itemId);
       const attempt = await transaction.get(attemptRef);
       if (!attempt.exists()) throw new Error('Resposta não encontrada.');
+      attemptUserId = String(attempt.data().userId ?? ''); attemptClassId = String(attempt.data().classId ?? '');
       const key = await transaction.get(doc(db!, 'quizAnswerKeys', attempt.data().quizId));
       if (!key.exists()) throw new Error('Gabarito não encontrado.');
       const submitted = attempt.data().answers ?? [];
@@ -95,6 +115,7 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       const correctAnswers = results.filter(Boolean).length;
       transaction.update(attemptRef, { status: 'reviewed', score: correctAnswers * 10, correctAnswers, totalQuestions: expected.length, correct: correctAnswers === expected.length, resultPublished: false, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
+    if (attemptUserId) await notifyUser(attemptUserId, attemptClassId, 'quiz', 'Quiz corrigido', 'Sua resposta foi corrigida. O resultado será mostrado quando o diretor publicar o ranking.').catch(() => undefined);
     return { status: 'reviewed' };
   }
   if (type === 'attendance') {
@@ -109,12 +130,15 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
   }
   if (type === 'studyRecord') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para avaliar.');
+    let studyUserId = ''; let studyClassId = '';
     await runTransaction(db, async transaction => {
       const recordRef = doc(db!, 'studyRecords', itemId);
       const record = await transaction.get(recordRef);
       if (!record.exists()) throw new Error('Resumo não encontrado.');
+      studyUserId = String(record.data().userId ?? ''); studyClassId = String(record.data().classId ?? '');
       transaction.update(recordRef, { score: approved ? 20 : 0, feedbackVisible: true, feedback: approved ? 'Resumo analisado pelo diretor. Continue estudando!' : 'Revise o resumo e envie novamente.', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
     });
+    if (studyUserId) await notifyUser(studyUserId, studyClassId, 'avaliacao', 'Resumo avaliado', approved ? 'Seu resumo foi analisado pelo diretor.' : 'Seu resumo precisa de uma revisão antes de ser concluído.').catch(() => undefined);
     return { status: approved ? 'approved' : 'rejected' };
   }
   if (type === 'roleRequest' || type === 'classJoinRequest') {
@@ -172,6 +196,7 @@ export async function publishLatestQuizRanking(selectedClassId?: string) {
   const publishedWeek = latest.data().weekKey ?? quizWeek(latest.data().releaseAt).weekKey;
   batch.set(doc(db, 'publishedClassScores', `${publishedWeek}_${classId}`), { classId, className: classData.name ?? 'Base', districtId: classData.districtId, ageGroup: classData.ageGroup ?? 'adolescentes', weekKey: publishedWeek, quarter: Math.floor(new Date().getMonth() / 3) + 1, year: new Date().getFullYear(), activeMembers: Math.max(1, activeMembers.size), entries, publishedAt: serverTimestamp() });
   await batch.commit();
+  await notifyClass(classId, 'ranking', 'Ranking semanal publicado', 'As notas e o placar da semana já estão disponíveis.').catch(() => undefined);
   return { quizId: latest.id, entries: entries.length };
 }
 
