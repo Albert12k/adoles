@@ -27,6 +27,7 @@ import { createCoordinatorStructure, createInitialStructure, listStructures, typ
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
 import { confirmEventAttendance, createDistrictEvent, listCurrentDistrictEvents, listDistrictEvents, type DistrictEvent } from './src/services/events';
+import { closeCurrentPeriod, type PeriodClosure, type PeriodKind } from './src/services/periods';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
@@ -622,6 +623,34 @@ function ActionRow({ icon, title, copy, badge, onPress }: { icon: string; title:
   );
 }
 
+function PeriodClosurePanel() {
+  const [armedKind, setArmedKind] = useState<PeriodKind | null>(null);
+  const [seconds, setSeconds] = useState(10);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<PeriodClosure | null>(null);
+  useEffect(() => {
+    if (!armedKind || seconds <= 0) return;
+    const timer = setTimeout(() => setSeconds(value => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [armedKind, seconds]);
+  const arm = (kind: PeriodKind) => { setArmedKind(kind); setSeconds(10); setError(''); setResult(null); };
+  const cancel = () => { setArmedKind(null); setSeconds(10); };
+  const confirm = async () => {
+    if (!armedKind || seconds > 0) return;
+    setBusy(true); setError('');
+    try { setResult(await closeCurrentPeriod(armedKind)); setArmedKind(null); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível encerrar o período.'); }
+    finally { setBusy(false); }
+  };
+  return <View>
+    <View style={styles.formCard}><Text style={styles.pageEyebrow}>FECHAMENTO OFICIAL</Text><Text style={styles.pageTitle}>Consolide a jornada da turma.</Text><Text style={styles.pageIntro}>O relatório reúne resumos, atividades, acertos nos quizzes e presenças de todos os adolescentes da base.</Text><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => arm('quarter')}><Text style={styles.memberActionText}>Encerrar trimestre</Text></Pressable><Pressable style={styles.memberActionButton} onPress={() => arm('year')}><Text style={styles.memberActionText}>Encerrar ano</Text></Pressable></View></View>
+    {armedKind && <View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>ATENÇÃO · AÇÃO DEFINITIVA</Text><Text style={styles.inviteCode}>{seconds > 0 ? seconds : 'CONFIRMAR?'}</Text><Text style={styles.cardCaption}>{armedKind === 'quarter' ? 'Você está encerrando o trimestre atual.' : 'Você está encerrando o ano atual e gerando os melhores do ano.'}</Text><Pressable style={[styles.copyButton, seconds > 0 && styles.buttonDisabled]} disabled={seconds > 0 || busy} onPress={confirm}><Text style={styles.copyButtonText}>{busy ? 'Gerando relatório...' : seconds > 0 ? `Aguarde ${seconds}s` : 'Sim, encerrar agora'}</Text></Pressable><Pressable onPress={cancel}><Text style={[styles.skipLink, { color: colors.white }]}>Cancelar encerramento</Text></Pressable></View>}
+    {error !== '' && <Text style={styles.authError}>{error}</Text>}
+    {result && <View><Text style={styles.pageEyebrow}>RELATÓRIO CONCLUÍDO</Text><Text style={styles.pageTitle}>{result.periodLabel}</Text>{result.entries.map(entry => <View key={entry.userId} style={styles.formCard}><View style={styles.weekRow}><Text style={styles.manageTitle}>{entry.position}º · {entry.name}</Text><Text style={styles.rankPoints}>{entry.points} pts</Text></View><Text style={styles.manageCopy}>{entry.summaries} resumos · {entry.activities} atividades · {entry.correctQuizAnswers} acertos · {entry.attendance} presenças</Text></View>)}</View>}
+  </View>;
+}
+
 function ManagementDetail({ title, role, onBack }: { title: string; role: Exclude<Role, 'adolescente'>; onBack: () => void }) {
   const [saved, setSaved] = useState(false);
   const [lessonTitle, setLessonTitle] = useState('Escolhas que transformam');
@@ -649,6 +678,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
   const isRisk = title.includes('Acompanhamento');
   const isMembers = title.includes('membros');
   const isQuizRanking = title.includes('ranking semanal');
+  const isPeriodClosure = title.includes('Encerrar período');
   useEffect(() => { if (isEvent) listCurrentDistrictEvents().then(setDistrictEvents).catch(() => undefined); }, [isEvent]);
   useEffect(() => { if (isStructure) listStructures().then(setStructures).catch(() => undefined); }, [isStructure]);
   const approvalType: ApprovalType | null = title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
@@ -735,6 +765,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         <View style={styles.scheduleRow}><View><Text style={styles.manageTitle}>Liberar no sábado</Text><Text style={styles.manageCopy}>Abertura automática às 00h</Text></View><View style={styles.toggleOn}><View style={styles.toggleKnob} /></View></View>
       </>}
       {isQuizRanking && <View style={styles.formCard}><Text style={styles.pageEyebrow}>CONTROLE DO DIRETOR</Text><Text style={styles.pageTitle}>Publique quando a turma estiver reunida.</Text><Text style={styles.pageIntro}>As notas continuam privadas até você liberar. Ao publicar, todos verão o ranking semanal ao mesmo tempo.</Text><View style={styles.inviteCodeCard}><Text style={styles.authEyebrow}>STATUS ATUAL</Text><Text style={styles.inviteCode}>🔒 PRIVADO</Text><Text style={styles.cardCaption}>Corrija todas as respostas antes de liberar o placar.</Text></View></View>}
+      {isPeriodClosure && <PeriodClosurePanel />}
       {isApproval && <>{displayApprovals.length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma solicitação pendente</Text><Text style={styles.manageCopy}>Os novos pedidos de liderança aparecerão aqui automaticamente.</Text></View>}{displayApprovals.map(item => { const done = approved.includes(item.name); return <View key={`${item.id}_${item.name}`} style={styles.approvalCard}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><View><Pressable style={[styles.approveButton, done && styles.approveButtonDone]} onPress={() => approveItem(item)}><Text style={[styles.approveButtonText, done && styles.approveButtonTextDone]}>{done ? '✓ Aprovado' : 'Aprovar'}</Text></Pressable>{!done && <Pressable onPress={() => rejectItem(item)}><Text style={styles.contactLink}>Recusar</Text></Pressable>}</View></View>; })}</>}
       {isReport && <>
         <View style={styles.reportHero}><Text style={styles.reportValue}>82%</Text><View style={styles.flex}><Text style={styles.reportTitle}>Engajamento médio</Text><Text style={styles.reportCopy}>Trimestre 3 · crescimento de 12%</Text></View></View>
@@ -768,7 +799,7 @@ function ManagementDetail({ title, role, onBack }: { title: string; role: Exclud
         {displayMembers.map(member => <Pressable key={member.id} style={[styles.memberRow, selectedMemberId === member.id && styles.memberRowSelected]} onPress={() => setSelectedMemberId(member.id)}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{member.name[0]}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{member.name}</Text><Text style={styles.manageCopy}>{member.role === 'director' ? 'Diretor(a)' : 'Membro ativo'}</Text></View><Text style={styles.memberMenu}>{selectedMemberId === member.id ? '✓' : '•••'}</Text></Pressable>)}
         {isMembers && <><View style={styles.memberActions}><Pressable style={styles.memberActionButton} onPress={() => runMembershipAction('transferLeadership')}><Text style={styles.memberActionText}>⇄ Transferir liderança</Text></Pressable><Pressable style={styles.memberDangerButton} onPress={() => runMembershipAction('revokeDirector')}><Text style={styles.memberDangerText}>Revogar direção</Text></Pressable></View><Pressable style={styles.removeMemberButton} onPress={() => runMembershipAction('removeMember')}><Text style={styles.removeMemberText}>Remover membro da classe</Text></Pressable></>}
       </>}
-      {!isApproval && !isReport && !isStructure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
+      {!isApproval && !isReport && !isStructure && !isPeriodClosure && <Pressable style={[styles.authPrimary, saved && styles.buttonDone]} onPress={saveManagement}><Text style={styles.authPrimaryText}>{saved ? '✓ Alterações salvas' : isQuizRanking ? 'Publicar notas e ranking' : isQuiz ? 'Salvar quiz' : isContent ? 'Publicar conteúdo' : isEvent ? 'Salvar encontro' : 'Salvar alterações'}</Text></Pressable>}
     </View>
   );
 }
@@ -787,6 +818,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
       ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
       ['🏆', 'Publicar ranking semanal', 'Liberar notas e placar para a turma', ''],
+      ['★', 'Encerrar período', 'Relatório trimestral e melhores do ano', ''],
       ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
       ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
