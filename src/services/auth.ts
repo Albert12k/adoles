@@ -3,15 +3,17 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { UserRole } from '../domain/models';
+import { validateCoordinatorInvite } from './coordinatorInvites';
 
 const requireFirebase = () => {
   if (!auth || !db) throw new Error('Firebase ainda não foi configurado. Preencha o arquivo .env.');
   return { auth, db };
 };
 
-export async function registerUser(name: string, email: string, password: string, role: UserRole, scope: { districtId?: string; classId?: string } = {}) {
+export async function registerUser(name: string, email: string, password: string, role: UserRole, scope: { districtId?: string; classId?: string; inviteCode?: string } = {}) {
   if (role === 'admin') throw new Error('Administradores são cadastrados diretamente no painel seguro do projeto.');
   const services = requireFirebase();
+  const coordinatorInvite = role === 'coordinator' ? await validateCoordinatorInvite(scope.inviteCode ?? '') : null;
   const credential = await createUserWithEmailAndPassword(services.auth, email, password);
   await setDoc(doc(services.db, 'users', credential.user.uid), {
     name,
@@ -26,8 +28,9 @@ export async function registerUser(name: string, email: string, password: string
       userId: credential.user.uid,
       name,
       requestedRole: role,
-      districtId: scope.districtId ?? null,
+      districtId: coordinatorInvite?.districtId ?? scope.districtId ?? null,
       classId: scope.classId ?? null,
+      inviteCode: coordinatorInvite?.code ?? null,
       status: 'pending',
       createdAt: serverTimestamp(),
     });
