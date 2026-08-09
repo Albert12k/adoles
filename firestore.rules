@@ -140,7 +140,8 @@ service cloud.firestore {
     match /classActivities/{activityId} {
       allow read: if signedIn() && (memberOf(resource.data.classId) || directorOf(resource.data.classId));
       allow create: if directorOf(request.resource.data.classId);
-      allow update, delete: if directorOf(resource.data.classId);
+      allow update: if directorOf(resource.data.classId) && request.resource.data.classId == resource.data.classId;
+      allow delete: if directorOf(resource.data.classId);
     }
 
     match /activityParticipants/{participantId} {

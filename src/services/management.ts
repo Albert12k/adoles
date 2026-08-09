@@ -30,7 +30,7 @@ async function notifyUser(userId: string, classId: string, type: string, title: 
   await addDoc(collection(db, 'notifications'), { userId, classId, type, title, body, read: false, createdBy: auth.currentUser.uid, createdAt: serverTimestamp() });
 }
 
-export async function publishContent(input: { title: string; classId?: string; lessonPdfUrl?: string; bookPdfUrl?: string; week?: number; quarter?: number; year?: number }) {
+export async function publishContent(input: { contentId?: string; title: string; classId?: string; lessonPdfUrl?: string; bookPdfUrl?: string; week?: number; quarter?: number; year?: number }) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para publicar.');
   let classId = input.classId;
   if (!classId) {
@@ -38,28 +38,44 @@ export async function publishContent(input: { title: string; classId?: string; l
     classId = directed.docs[0]?.id;
   }
   if (!classId) throw new Error('Nenhuma classe foi vinculada ao seu perfil.');
-  const reference = await addDoc(collection(db, 'weeklyContent'), {
-    classId, title: input.title.trim(), lessonPdfUrl: input.lessonPdfUrl ?? null, bookPdfUrl: input.bookPdfUrl ?? null,
-    week: input.week ?? 1, quarter: input.quarter ?? 1, year: input.year ?? new Date().getFullYear(),
-    archived: false, createdBy: auth.currentUser.uid, publishedAt: serverTimestamp(),
-  });
-  await notifyClass(classId, 'conteudo', 'Novo conteúdo semanal', `${input.title.trim()} já está disponível para estudo.`).catch(() => undefined);
-  return { contentId: reference.id };
+  const week = input.week ?? 1; const quarter = input.quarter ?? 1; const year = input.year ?? new Date().getFullYear();
+  let contentId = input.contentId;
+  if (!contentId) {
+    const existing = await getDocs(query(collection(db, 'weeklyContent'), where('classId', '==', classId), limit(100)));
+    contentId = existing.docs.find(item => Number(item.data().week) === week && Number(item.data().quarter) === quarter && Number(item.data().year) === year)?.id;
+  }
+  const payload = { classId, title: input.title.trim(), lessonPdfUrl: input.lessonPdfUrl ?? null, bookPdfUrl: input.bookPdfUrl ?? null, week, quarter, year, archived: false, updatedBy: auth.currentUser.uid, updatedAt: serverTimestamp() };
+  if (contentId) {
+    const reference = doc(db, 'weeklyContent', contentId);
+    const current = await getDoc(reference);
+    if (!current.exists() || current.data().classId !== classId) throw new Error('Conteúdo semanal não encontrado nesta base.');
+    await updateDoc(reference, { ...payload, version: increment(1), restoredAt: current.data().archived === true ? serverTimestamp() : current.data().restoredAt ?? null });
+  } else {
+    const reference = await addDoc(collection(db, 'weeklyContent'), { ...payload, version: 1, createdBy: auth.currentUser.uid, publishedAt: serverTimestamp() });
+    contentId = reference.id;
+  }
+  await notifyClass(classId, 'conteudo', 'Conteúdo semanal atualizado', `${input.title.trim()} já está disponível para estudo.`).catch(() => undefined);
+  return { contentId };
 }
 
-export interface ManagedContent { id: string; title: string; week: number; quarter: number; year: number; lessonPdfUrl?: string; bookPdfUrl?: string; }
+export interface ManagedContent { id: string; title: string; week: number; quarter: number; year: number; lessonPdfUrl?: string; bookPdfUrl?: string; archived: boolean; version: number; }
 export async function listManagedContent(selectedClassId?: string): Promise<ManagedContent[]> {
   if (!db || !auth?.currentUser) return [];
   let classId = selectedClassId;
   if (!classId) { const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1))); classId = directed.docs[0]?.id; }
   if (!classId) return [];
   const result = await getDocs(query(collection(db, 'weeklyContent'), where('classId', '==', classId), limit(30)));
-  return result.docs.filter(item => item.data().archived !== true).map(item => ({ id: item.id, title: item.data().title ?? 'Conteúdo semanal', week: Number(item.data().week ?? 1), quarter: Number(item.data().quarter ?? 1), year: Number(item.data().year ?? new Date().getFullYear()), lessonPdfUrl: item.data().lessonPdfUrl, bookPdfUrl: item.data().bookPdfUrl })).sort((a, b) => b.year - a.year || b.quarter - a.quarter || b.week - a.week);
+  return result.docs.map(item => ({ id: item.id, title: item.data().title ?? 'Conteúdo semanal', week: Number(item.data().week ?? 1), quarter: Number(item.data().quarter ?? 1), year: Number(item.data().year ?? new Date().getFullYear()), lessonPdfUrl: item.data().lessonPdfUrl, bookPdfUrl: item.data().bookPdfUrl, archived: item.data().archived === true, version: Number(item.data().version ?? 1) })).sort((a, b) => Number(a.archived) - Number(b.archived) || b.year - a.year || b.quarter - a.quarter || b.week - a.week);
 }
 
 export async function archiveWeeklyContent(contentId: string) {
   if (!db || !auth?.currentUser) throw new Error('Entre novamente para arquivar o conteúdo.');
   await updateDoc(doc(db, 'weeklyContent', contentId), { archived: true, archivedBy: auth.currentUser.uid, archivedAt: serverTimestamp() });
+}
+
+export async function restoreWeeklyContent(contentId: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para restaurar o conteúdo.');
+  await updateDoc(doc(db, 'weeklyContent', contentId), { archived: false, restoredBy: auth.currentUser.uid, restoredAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
 
 export async function publishQuizContent(input: {
