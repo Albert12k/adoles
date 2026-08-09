@@ -54,6 +54,22 @@ export async function publishQuizContent(input: {
 }
 
 export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard', itemId: string, approved: boolean) {
+  if (type === 'challenge') {
+    if (!db || !auth?.currentUser) throw new Error('Entre novamente para validar o desafio.');
+    await runTransaction(db, async transaction => {
+      const challengeRef = doc(db!, 'challenges', itemId);
+      const challenge = await transaction.get(challengeRef);
+      if (!challenge.exists()) throw new Error('Desafio não encontrado.');
+      const data = challenge.data();
+      const status = approved ? 'approved' : 'rejected';
+      transaction.update(challengeRef, { status, reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      if (approved) {
+        transaction.set(doc(db!, 'scores', `challenge_${itemId}`), { classId: data.classId, districtId: data.districtId, ageGroup: data.ageGroup ?? 'adolescentes', source: 'challenge', points: Number(data.bonusPoints ?? 0), createdAt: serverTimestamp() });
+        transaction.set(doc(db!, 'muralPosts', `challenge_${itemId}`), { classId: data.classId, districtId: data.districtId, type: 'challenge', icon: '◆', title: data.title, copy: `${data.className ?? 'A base'} concluiu o desafio e ganhou +${data.bonusPoints ?? 0} pontos!`, evidence: data.evidence ?? '', reactions: [], createdAt: serverTimestamp() });
+      }
+    });
+    return { status: approved ? 'approved' : 'rejected' };
+  }
   if (type === 'flashcard') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para moderar o flashcard.');
     await runTransaction(db, async transaction => {

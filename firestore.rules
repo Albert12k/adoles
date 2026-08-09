@@ -130,18 +130,18 @@ service cloud.firestore {
     }
 
     match /challenges/{challengeId} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (memberOf(resource.data.classId) || coordinatorOf(resource.data.districtId));
       allow create: if directorOf(request.resource.data.classId);
-      allow update: if directorOf(resource.data.classId) &&
-        request.resource.data.status == resource.data.status &&
-        request.resource.data.districtId == resource.data.districtId &&
-        request.resource.data.classId == resource.data.classId &&
-        request.resource.data.bonusPoints == resource.data.bonusPoints;
+      allow update: if (directorOf(resource.data.classId) && request.resource.data.status == resource.data.status &&
+        request.resource.data.districtId == resource.data.districtId && request.resource.data.classId == resource.data.classId &&
+        request.resource.data.bonusPoints == resource.data.bonusPoints) ||
+        (coordinatorOf(resource.data.districtId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']));
     }
 
     match /scores/{scoreId} {
       allow read: if signedIn();
-      allow write: if admin();
+      allow create: if admin() || coordinatorOf(request.resource.data.districtId);
+      allow update, delete: if admin();
     }
 
     match /notifications/{notificationId} {
@@ -207,6 +207,7 @@ service cloud.firestore {
       allow read: if signedIn() && memberOf(resource.data.classId);
       allow update: if signedIn() && memberOf(resource.data.classId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'updatedAt']);
+      allow create: if coordinatorOf(request.resource.data.districtId);
     }
 
     match /badges/{badgeId} {
