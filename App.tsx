@@ -890,7 +890,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [deletionToApprove, setDeletionToApprove] = useState('');
   const [adminDeletionSeconds, setAdminDeletionSeconds] = useState(10);
   const toggleApproval = (name: string) => setApproved(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]);
-  const isApproval = title.includes('Aprovar') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir') || title.includes('Moderar');
+  const isApproval = title.includes('Aprovar') || title.includes('Aprovações') || title.includes('Avaliar') || title.includes('Validar') || title.includes('Corrigir') || title.includes('Moderar');
   const isContent = title.includes('Conteúdo');
   const isQuiz = title.includes('Quiz');
   const isReport = title.includes('Relatório');
