@@ -85,15 +85,12 @@ export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & {
   const firestore = requireFirestore();
   const now = new Date(); const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const recordRef = doc(firestore, 'studyRecords', `${input.userId}_${dayKey}_${input.source}`);
-  await runTransaction(firestore, async transaction => {
-    const existing = await transaction.get(recordRef);
-    if (existing.exists()) {
-      if (existing.data().evaluation !== 'revise' || existing.data().feedbackVisible !== true) throw new Error('Você já registrou este tipo de estudo hoje.');
-      transaction.update(recordRef, { summary: input.summary, passage: input.passage ?? null, feedbackVisible: false, evaluation: 'resubmitted', previousFeedback: existing.data().feedback ?? '', score: 0, revisionCount: Number(existing.data().revisionCount ?? 0) + 1, revisedAt: serverTimestamp() });
-      return;
-    }
-    transaction.set(recordRef, { ...input, dayKey, revisionCount: 0, createdAt: serverTimestamp() });
-  });
+  try {
+    await setDoc(recordRef, { ...input, passage: input.passage ?? null, dayKey, revisionCount: 0, createdAt: serverTimestamp() });
+  } catch (error) {
+    if ((error as { code?: string }).code === 'permission-denied') throw new Error('Você já registrou este tipo de estudo hoje ou ainda não está vinculado à turma correta.');
+    throw error;
+  }
   return recordRef;
 }
 
