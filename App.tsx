@@ -19,7 +19,7 @@ import { auth, firebaseEnabled } from './src/config/firebase';
 import { resolvePrivateFileUrl } from './src/config/supabase';
 import { getRegistrationOptions, getUserRole, loginUser, logoutUser, registerUser, resetUserPassword, subscribeToAuth } from './src/services/auth';
 import type { RegistrationOptions } from './src/services/auth';
-import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, saveStudy, submitQuizAnswers, subscribeToQuizAvailability, validateClassInviteCode } from './src/services/data';
+import { getMyQuizAttempt, getQuizRanking, getWeeklyQuiz, listMyAttendance, listMyStudyRecords, listQuizRankingHistory, listWeeklyContent, requestClassEntry, requestClassEntryForClass, saveStudy, submitQuizAnswers, subscribeToQuizAvailability, validateClassInviteCode } from './src/services/data';
 import { useLiveDashboard } from './src/hooks/useLiveDashboard';
 import { archiveWeeklyContent, endQuizNow, getAttendanceProgress, listManagedContent, listManagedQuizzes, manageClassMembership, publishContent, publishLatestQuizRanking, publishQuizContent, restoreWeeklyContent, reviewLeadershipItem, sendAttendanceReminder, sendQuizReminder, subscribeQuizParticipation, type AttendanceProgress, type ManagedContent, type ManagedQuiz } from './src/services/management';
 import { exportLeadershipReport, loadLeadershipReport, type LeadershipReport } from './src/services/report';
@@ -509,9 +509,23 @@ function ProfileScreen({ name, className, classId, districtId, ageGroup, initial
   );
 }
 
+function UnlinkedStudentSetup({ onExit }: { onExit: () => Promise<void> }) {
+  const [options, setOptions] = useState<RegistrationOptions>({ districts: [], churches: [], classes: [] });
+  const [districtId, setDistrictId] = useState('');
+  const [churchId, setChurchId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [notice, setNotice] = useState('');
+  useEffect(() => { getRegistrationOptions().then(result => { setOptions(result); const district = result.districts[0]?.id ?? ''; const church = result.churches.find(item => item.districtId === district)?.id ?? ''; setDistrictId(district); setChurchId(church); setClassId(result.classes.find(item => item.districtId === district && item.churchId === church)?.id ?? ''); }).catch(() => setNotice('Não foi possível carregar as bases disponíveis.')).finally(() => setBusy(false)); }, []);
+  return <SafeAreaView style={styles.authSafe}><ScrollView contentContainerStyle={styles.authPage}><View style={styles.authMiniLogo}><Text style={styles.brandMarkText}>V</Text></View><Text style={styles.authEyebrow}>VINCULAR MINHA CONTA</Text><Text style={styles.authTitle}>Escolha sua base.</Text><Text style={styles.authCopy}>Sua conta foi criada, mas ainda precisa de uma solicitação de entrada.</Text>{busy && <ActivityIndicator color={colors.tealMedium} />}<View style={styles.scopeSection}><Text style={styles.authLabel}>Distrito</Text><View style={styles.scopeWrap}>{options.districts.map(item => <Pressable key={item.id} style={[styles.scopeChip, districtId === item.id && styles.scopeChipActive]} onPress={() => { const church = options.churches.find(entry => entry.districtId === item.id)?.id ?? ''; setDistrictId(item.id); setChurchId(church); setClassId(options.classes.find(entry => entry.districtId === item.id && entry.churchId === church)?.id ?? ''); }}><Text style={[styles.scopeChipText, districtId === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View><Text style={[styles.authLabel, { marginTop: 14 }]}>Igreja</Text><View style={styles.scopeWrap}>{options.churches.filter(item => item.districtId === districtId).map(item => <Pressable key={item.id} style={[styles.scopeChip, churchId === item.id && styles.scopeChipActive]} onPress={() => { setChurchId(item.id); setClassId(options.classes.find(entry => entry.churchId === item.id)?.id ?? ''); }}><Text style={[styles.scopeChipText, churchId === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View><Text style={[styles.authLabel, { marginTop: 14 }]}>Base</Text><View style={styles.scopeWrap}>{options.classes.filter(item => item.districtId === districtId && item.churchId === churchId).map(item => <Pressable key={item.id} style={[styles.scopeChip, classId === item.id && styles.scopeChipActive]} onPress={() => setClassId(item.id)}><Text style={[styles.scopeChipText, classId === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View></View><Pressable disabled={!classId || busy} style={[styles.authPrimary, (!classId || busy) && styles.buttonDisabled]} onPress={async () => { try { setBusy(true); setNotice(''); await requestClassEntryForClass(auth?.currentUser?.uid ?? '', classId); setNotice('✓ Solicitação enviada. Aguarde a aprovação do diretor.'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível enviar a solicitação.'); } finally { setBusy(false); } }}><Text style={styles.authPrimaryText}>{busy ? 'Aguarde...' : 'Solicitar entrada nesta base'}</Text></Pressable>{notice !== '' && <Text style={notice.startsWith('✓') ? styles.successNotice : styles.authError}>{notice}</Text>}<Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair da conta</Text></Pressable></ScrollView></SafeAreaView>;
+}
+
 function MainApp({ onExit }: { onExit: () => Promise<void> }) {
   const [tab, setTab] = useState<Tab>('Início');
   const student = useStudentProfile();
+  if (!student.ready) return <SafeAreaView style={styles.loadingScreen}><ActivityIndicator size="large" color={colors.gold} /></SafeAreaView>;
+  if (!student.classId && !student.pending) return <UnlinkedStudentSetup onExit={onExit} />;
+  if (student.pending) return <SafeAreaView style={styles.authSafe}><View style={styles.authPage}><View style={styles.authMiniLogo}><Text style={styles.brandMarkText}>⌛</Text></View><Text style={styles.authEyebrow}>ENTRADA PENDENTE</Text><Text style={styles.authTitle}>Sua solicitação foi enviada.</Text><Text style={styles.authCopy}>O diretor da base ou o administrador geral precisa aprovar sua entrada. As atividades serão liberadas automaticamente depois disso.</Text><View style={styles.successNotice}><Text style={styles.manageTitle}>Você não precisa criar outra conta.</Text></View><Pressable style={styles.signOutButton} onPress={onExit}><Text style={styles.signOutText}>Sair da conta</Text></Pressable></View></SafeAreaView>;
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style={tab === 'Início' ? 'light' : 'dark'} />
@@ -608,15 +622,16 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
     try {
-      if (selectedRole === 'adolescente' && invite.trim() && inviteState !== 'valid') throw new Error('Verifique o código da base antes de criar a conta.');
       const user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined, inviteCode: selectedRole === 'coordenador' ? invite : undefined });
-      if (selectedRole === 'adolescente' && invite.trim().length >= 5) {
-        await requestClassEntry(user.uid, invite);
+      if (selectedRole === 'adolescente') {
+        if (invite.trim().length >= 5 && inviteState === 'valid') await requestClassEntry(user.uid, invite);
+        else await requestClassEntryForClass(user.uid, selectedClass);
+        await logoutUser(); setStep('pending'); return;
       }
       if (selectedRole === 'diretor' || selectedRole === 'coordenador') {
         await logoutUser(); setStep('pending'); return;
       }
-      onComplete(selectedRole === 'adolescente' ? 'adolescente' : selectedRole);
+      onComplete(selectedRole);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Não foi possível criar a conta.');
     } finally { setAuthBusy(false); }
@@ -671,7 +686,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   }
 
   if (step === 'pending') {
-    return <SafeAreaView style={styles.authSafe}><View style={styles.authPage}><View style={styles.authMiniLogo}><Text style={styles.brandMarkText}>✓</Text></View><Text style={styles.authEyebrow}>SOLICITAÇÃO ENVIADA</Text><Text style={styles.authTitle}>Seu cadastro está em análise.</Text><Text style={styles.authCopy}>{role === 'diretor' ? 'O coordenador do distrito ou o administrador aprovará seu acesso à base selecionada.' : 'O administrador geral verificará o convite e aprovará seu acesso ao distrito.'}</Text><View style={styles.successNotice}><Text style={styles.manageTitle}>Você receberá acesso de liderança somente depois da aprovação.</Text></View><Pressable style={styles.authPrimary} onPress={() => setStep('login')}><Text style={styles.authPrimaryText}>Ir para o login</Text></Pressable></View></SafeAreaView>;
+    return <SafeAreaView style={styles.authSafe}><View style={styles.authPage}><View style={styles.authMiniLogo}><Text style={styles.brandMarkText}>✓</Text></View><Text style={styles.authEyebrow}>SOLICITAÇÃO ENVIADA</Text><Text style={styles.authTitle}>Seu cadastro está em análise.</Text><Text style={styles.authCopy}>{role === 'adolescente' ? 'O diretor da base selecionada recebeu sua solicitação. O administrador geral também poderá localizá-la.' : role === 'diretor' ? 'O coordenador do distrito ou o administrador aprovará seu acesso à base selecionada.' : 'O administrador geral verificará o convite e aprovará seu acesso ao distrito.'}</Text><View style={styles.successNotice}><Text style={styles.manageTitle}>{role === 'adolescente' ? 'As atividades serão liberadas depois da aprovação da entrada.' : 'Você receberá acesso de liderança somente depois da aprovação.'}</Text></View><Pressable style={styles.authPrimary} onPress={() => setStep('login')}><Text style={styles.authPrimaryText}>Ir para o login</Text></Pressable></View></SafeAreaView>;
   }
 
   if (step === 'role') {
@@ -695,7 +710,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
               <View style={[styles.radio, role === item.key && styles.radioActive]}>{role === item.key && <View style={styles.radioDot} />}</View>
             </Pressable>
           ))}
-          {role === 'diretor' && <View style={styles.scopeSection}>
+          {(role === 'diretor' || role === 'adolescente') && <View style={styles.scopeSection}>
             <Text style={styles.authLabel}>Distrito desejado</Text>
             {optionsLoading && <ActivityIndicator color={colors.tealMedium} />}
             <View style={styles.scopeWrap}>{registrationOptions.districts.map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { const churchId = registrationOptions.churches.find(church => church.districtId === item.id)?.id ?? ''; setSelectedDistrict(item.id); setSelectedChurch(churchId); setSelectedClass(registrationOptions.classes.find(entry => entry.districtId === item.id && entry.churchId === churchId)?.id ?? ''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
@@ -705,8 +720,8 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           </View>}
           {role === 'coordenador' && <View style={styles.scopeSection}><Text style={styles.authLabel}>Código de convite do administrador</Text><AuthField label="Convite" placeholder="Ex.: COORD-ABCD-1234" value={invite} onChangeText={text => setInvite(text.toUpperCase())} /><Text style={styles.manageCopy}>O convite já identifica automaticamente o seu distrito.</Text></View>}
           <Pressable
-            style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
-            disabled={authBusy || optionsLoading || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
+            style={[styles.authPrimary, firebaseEnabled && (((role === 'diretor' || role === 'adolescente') && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
+            disabled={authBusy || optionsLoading || (firebaseEnabled && (((role === 'diretor' || role === 'adolescente') && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
             onPress={() => role === 'admin' ? setStep('login') : role === 'adolescente' ? setStep('invite') : finishRegistration(role)}
           >
             <Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : role === 'admin' ? 'Entrar como administrador' : 'Continuar'}</Text>
@@ -1154,6 +1169,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       : [
         ['⌘', 'Distritos', 'Coordenadores e estrutura regional', '8'],
         ['⌂', 'Igrejas e classes', 'Todas as turmas cadastradas', '47'],
+        ['♙', 'Aprovar entradas de adolescentes', 'Solicitações que ainda aguardam uma base', ''],
         ['✓', 'Aprovações pendentes', 'Intervenções que precisam de atenção', '5'],
         ['♙', 'Gerenciar coordenadores', 'Convites, transferências e acessos', ''],
         ['⚠', 'Solicitações de exclusão', 'Analisar privacidade e suspensão de contas', ''],

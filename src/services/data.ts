@@ -39,6 +39,28 @@ export async function requestClassEntry(userId: string, inviteCode: string) {
   return { classId, className: '' };
 }
 
+export async function requestClassEntryForClass(userId: string, classId: string) {
+  const firestore = requireFirestore();
+  if (!userId) throw new Error('Entre na sua conta para solicitar a entrada.');
+  if (!classId) throw new Error('Escolha a base que deseja participar.');
+  const [selectedClass, profile] = await Promise.all([
+    getDoc(doc(firestore, 'classes', classId)),
+    getDoc(doc(firestore, 'users', userId)),
+  ]);
+  if (!selectedClass.exists() || selectedClass.data().active !== true) throw new Error('Esta base não está disponível para novos cadastros.');
+  await setDoc(doc(firestore, 'classJoinRequests', `${classId}_${userId}`), {
+    userId,
+    classId,
+    districtId: selectedClass.data().districtId,
+    churchId: selectedClass.data().churchId,
+    className: selectedClass.data().name ?? 'Base',
+    name: profile.data()?.name ?? 'Adolescente',
+    status: 'pending',
+    createdAt: serverTimestamp(),
+  });
+  return { classId, className: String(selectedClass.data().name ?? 'Base') };
+}
+
 export async function validateClassInviteCode(inviteCode: string) {
   const firestore = requireFirestore();
   const code = inviteCode.trim().toUpperCase();

@@ -25,10 +25,14 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         if (!ids.length) return;
         approvalsQuery = type === 'attendance' ? query(collection(db!, 'attendance'), where('classId', 'in', ids), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(30)) : type === 'quizAttempt' ? query(collection(db!, 'quizAttempts'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'studyRecords'), where('classId', 'in', ids), where('feedbackVisible', '==', false), limit(30));
       } else if (type === 'classJoinRequest' || type === 'flashcard') {
+        if (profile.role === 'admin') {
+          approvalsQuery = query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('status', '==', 'pending'), limit(100));
+        } else {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
         const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30));
+        }
       } else if (type === 'leadershipTransfer') {
         approvalsQuery = profile.role === 'admin' ? query(collection(db!, 'leadershipTransfers'), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'leadershipTransfers'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
       } else if (type === 'challenge') {
