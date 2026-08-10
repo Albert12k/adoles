@@ -117,7 +117,7 @@ export async function listManagedQuizzes(selectedClassId?: string): Promise<Mana
   const items = await Promise.all(result.docs.map(async item => {
     const data = item.data(); const isActive = data.active === true && Number(data.closesAt ?? 0) > Date.now();
     if (!isActive) return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: false, submittedAttempts: Number(data.submittedAttempts ?? 0), totalMembers: members.length, pendingMembers: [], reminderCount: Number(data.reminderCount ?? 0), lastReminderAt: data.lastReminderAt?.toDate?.(), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
-    const attempts = await getDocs(query(collection(db!, 'quizAttempts'), where('quizId', '==', item.id)));
+    const attempts = await getDocs(query(collection(db!, 'quizAttempts'), where('classId', '==', classId), where('quizId', '==', item.id)));
     const answered = new Set(attempts.docs.map(attempt => String(attempt.data().userId)));
     return { id: item.id, title: data.title ?? 'Quiz semanal', releaseAt: Number(data.releaseAt ?? 0), closesAt: Number(data.closesAt ?? 0), active: true, submittedAttempts: answered.size, totalMembers: members.length, pendingMembers: members.filter(member => !answered.has(member.userId)), reminderCount: Number(data.reminderCount ?? 0), lastReminderAt: data.lastReminderAt?.toDate?.(), endedAt: data.endedAt?.toDate?.() } as ManagedQuiz;
   }));
@@ -139,7 +139,7 @@ export async function sendQuizReminder(quizId: string) {
   if (Date.now() - lastReminderAt < 60 * 60 * 1000) throw new Error('Aguarde uma hora antes de enviar outro lembrete deste quiz.');
   const [members, attempts] = await Promise.all([
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', quiz.data().classId), where('active', '==', true), limit(300))),
-    getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', quizId))),
+    getDocs(query(collection(db, 'quizAttempts'), where('classId', '==', quiz.data().classId), where('quizId', '==', quizId))),
   ]);
   const answered = new Set(attempts.docs.map(item => String(item.data().userId)));
   const pending = members.docs.filter(item => item.data().role !== 'director' && !answered.has(String(item.data().userId)));
@@ -159,7 +159,7 @@ export async function endQuizNow(quizId: string) {
     classId = String(quiz.data().classId ?? ''); title = String(quiz.data().title ?? title);
     transaction.update(quizRef, { active: false, closesAt: Date.now(), endedBy: auth!.currentUser!.uid, endedAt: serverTimestamp() });
   });
-  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', quizId)));
+  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('classId', '==', classId), where('quizId', '==', quizId)));
   const reviewed = attempts.docs.filter(item => item.data().status === 'reviewed').length;
   await updateDoc(doc(db, 'quizzes', quizId), { submittedAttempts: attempts.size, reviewedAttempts: reviewed });
   if (classId) await notifyClass(classId, 'quiz', 'Quiz encerrado', `${title} foi encerrado pelo diretor com ${attempts.size} resposta(s) recebida(s).`).catch(() => undefined);
@@ -331,7 +331,7 @@ export async function publishLatestQuizRanking(selectedClassId?: string) {
   const quizzes = await getDocs(query(collection(db, 'quizzes'), where('classId', '==', classId), where('active', '==', true), limit(20)));
   const latest = quizzes.docs.sort((a, b) => Number(b.data().releaseAt ?? 0) - Number(a.data().releaseAt ?? 0))[0];
   if (!latest) throw new Error('Nenhum quiz ativo foi encontrado.');
-  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('quizId', '==', latest.id), where('status', '==', 'reviewed')));
+  const attempts = await getDocs(query(collection(db, 'quizAttempts'), where('classId', '==', classId), where('quizId', '==', latest.id), where('status', '==', 'reviewed')));
   if (attempts.empty) throw new Error('Ainda não há respostas corrigidas para publicar.');
   const sorted = attempts.docs.map(item => ({ userId: item.data().userId, name: item.data().userName ?? 'Adolescente', score: Number(item.data().score ?? 0) })).sort((a, b) => b.score - a.score);
   let lastScore: number | null = null;
