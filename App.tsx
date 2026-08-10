@@ -48,7 +48,7 @@ import { exportMyData, loadMyDataSummary, type MyDataSummary } from './src/servi
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
 type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
-type AuthStep = 'welcome' | 'login' | 'register' | 'role' | 'invite';
+type AuthStep = 'welcome' | 'login' | 'register' | 'role' | 'invite' | 'pending';
 type QuizQuestionDraft = { type: 'multiple_choice' | 'true_false' | 'assertion_reason' | 'open' | 'identify_false'; prompt: string; options: string[]; correctAnswer: number | string };
 
 const quizQuestionTemplates: QuizQuestionDraft[] = [
@@ -584,14 +584,20 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
   const [authMessage, setAuthMessage] = useState('');
   const [registrationOptions, setRegistrationOptions] = useState<RegistrationOptions>({ districts: [], churches: [], classes: [] });
   const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [selectedChurch, setSelectedChurch] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
+  const [optionsLoading, setOptionsLoading] = useState(false);
 
   useEffect(() => {
     if (step !== 'role' || !firebaseEnabled) return;
+    setOptionsLoading(true);
     getRegistrationOptions().then(options => {
       setRegistrationOptions(options);
-      setSelectedDistrict(current => current || options.districts[0]?.id || '');
-    }).catch(() => setAuthError('Não foi possível carregar os distritos.'));
+      const districtId = options.districts[0]?.id ?? '';
+      const churchId = options.churches.find(item => item.districtId === districtId)?.id ?? '';
+      setSelectedDistrict(districtId); setSelectedChurch(churchId);
+      setSelectedClass(options.classes.find(item => item.districtId === districtId && item.churchId === churchId)?.id ?? '');
+    }).catch(() => setAuthError('Não foi possível carregar os distritos e igrejas.')).finally(() => setOptionsLoading(false));
   }, [step]);
 
   const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
@@ -603,6 +609,9 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
       const user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined, inviteCode: selectedRole === 'coordenador' ? invite : undefined });
       if (selectedRole === 'adolescente' && invite.trim().length >= 5) {
         await requestClassEntry(user.uid, invite);
+      }
+      if (selectedRole === 'diretor' || selectedRole === 'coordenador') {
+        await logoutUser(); setStep('pending'); return;
       }
       onComplete(selectedRole === 'adolescente' ? 'adolescente' : selectedRole);
     } catch (error) {
@@ -658,6 +667,10 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     );
   }
 
+  if (step === 'pending') {
+    return <SafeAreaView style={styles.authSafe}><View style={styles.authPage}><View style={styles.authMiniLogo}><Text style={styles.brandMarkText}>✓</Text></View><Text style={styles.authEyebrow}>SOLICITAÇÃO ENVIADA</Text><Text style={styles.authTitle}>Seu cadastro está em análise.</Text><Text style={styles.authCopy}>{role === 'diretor' ? 'O coordenador do distrito ou o administrador aprovará seu acesso à base selecionada.' : 'O administrador geral verificará o convite e aprovará seu acesso ao distrito.'}</Text><View style={styles.successNotice}><Text style={styles.manageTitle}>Você receberá acesso de liderança somente depois da aprovação.</Text></View><Pressable style={styles.authPrimary} onPress={() => setStep('login')}><Text style={styles.authPrimaryText}>Ir para o login</Text></Pressable></View></SafeAreaView>;
+  }
+
   if (step === 'role') {
     const roles: { key: Role; icon: string; title: string; copy: string }[] = [
       { key: 'adolescente', icon: '✦', title: 'Adolescente', copy: 'Estudar, participar e acompanhar minha jornada' },
@@ -681,18 +694,22 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           ))}
           {role === 'diretor' && <View style={styles.scopeSection}>
             <Text style={styles.authLabel}>Distrito desejado</Text>
-            <View style={styles.scopeWrap}>{(registrationOptions.districts.length ? registrationOptions.districts : [{ id: 'salvador-centro', name: 'Salvador Centro' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { setSelectedDistrict(item.id); setSelectedClass(''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
-            {role === 'diretor' && <><Text style={[styles.authLabel, { marginTop: 13 }]}>Classe desejada</Text><View style={styles.scopeWrap}>{(registrationOptions.classes.filter(item => item.districtId === selectedDistrict).length ? registrationOptions.classes.filter(item => item.districtId === selectedDistrict) : [{ id: 'base-geracao', name: 'Base Geração', districtId: selectedDistrict, churchId: '', ageGroup: 'adolescentes' }]).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedClass === item.id && styles.scopeChipActive]} onPress={() => setSelectedClass(item.id)}><Text style={[styles.scopeChipText, selectedClass === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View></>}
+            {optionsLoading && <ActivityIndicator color={colors.tealMedium} />}
+            <View style={styles.scopeWrap}>{registrationOptions.districts.map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { const churchId = registrationOptions.churches.find(church => church.districtId === item.id)?.id ?? ''; setSelectedDistrict(item.id); setSelectedChurch(churchId); setSelectedClass(registrationOptions.classes.find(entry => entry.districtId === item.id && entry.churchId === churchId)?.id ?? ''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
+            <Text style={[styles.authLabel, { marginTop: 13 }]}>Igreja desejada</Text><View style={styles.scopeWrap}>{registrationOptions.churches.filter(item => item.districtId === selectedDistrict).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedChurch === item.id && styles.scopeChipActive]} onPress={() => { setSelectedChurch(item.id); setSelectedClass(registrationOptions.classes.find(entry => entry.churchId === item.id)?.id ?? ''); }}><Text style={[styles.scopeChipText, selectedChurch === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
+            <Text style={[styles.authLabel, { marginTop: 13 }]}>Base desejada</Text><View style={styles.scopeWrap}>{registrationOptions.classes.filter(item => item.districtId === selectedDistrict && item.churchId === selectedChurch).map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedClass === item.id && styles.scopeChipActive]} onPress={() => setSelectedClass(item.id)}><Text style={[styles.scopeChipText, selectedClass === item.id && styles.scopeChipTextActive]}>{item.name} · {item.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></Pressable>)}</View>
+            {!optionsLoading && registrationOptions.districts.length === 0 && <Text style={styles.authError}>Nenhuma estrutura ativa foi cadastrada. Peça ao administrador para criar o distrito, a igreja e a base.</Text>}
           </View>}
           {role === 'coordenador' && <View style={styles.scopeSection}><Text style={styles.authLabel}>Código de convite do administrador</Text><AuthField label="Convite" placeholder="Ex.: COORD-ABCD-1234" value={invite} onChangeText={text => setInvite(text.toUpperCase())} /><Text style={styles.manageCopy}>O convite já identifica automaticamente o seu distrito.</Text></View>}
           <Pressable
-            style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
-            disabled={authBusy || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
+            style={[styles.authPrimary, firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
+            disabled={authBusy || optionsLoading || (firebaseEnabled && ((role === 'diretor' && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
             onPress={() => role === 'admin' ? setStep('login') : role === 'adolescente' ? setStep('invite') : finishRegistration(role)}
           >
             <Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : role === 'admin' ? 'Entrar como administrador' : 'Continuar'}</Text>
           </Pressable>
           {(role === 'diretor' || role === 'coordenador') && <Text style={styles.approvalHint}>O acesso de liderança ficará pendente até a aprovação responsável.</Text>}
+          {authError !== '' && <Text style={styles.authError}>{authError}</Text>}
           {role === 'admin' && <Text style={styles.approvalHint}>Por segurança, o administrador geral é criado diretamente no Firebase e entra por esta tela.</Text>}
         </ScrollView>
       </SafeAreaView>

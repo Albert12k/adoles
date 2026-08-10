@@ -20,7 +20,7 @@ service cloud.firestore {
         (roleIs('coordinator') && resource.data.districtId == profile().districtId &&
           ((resource.data.role == 'student' && request.resource.data.role == 'director') ||
            (resource.data.role == 'director' && request.resource.data.role == 'student')) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'districtId', 'classIds'])) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'pendingRole', 'districtId', 'classIds'])) ||
         (roleIs('director') && resource.data.role == 'student' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['classIds', 'districtId']) &&
           ((request.resource.data.classIds.toSet().difference(resource.data.classIds.toSet()).size() == 1 &&
@@ -36,7 +36,7 @@ service cloud.firestore {
     }
 
     match /districts/{districtId} {
-      allow read: if signedIn();
+      allow read: if resource.data.active == true || signedIn();
       allow write: if admin();
     }
 
@@ -104,12 +104,12 @@ service cloud.firestore {
     }
 
     match /churches/{churchId} {
-      allow read: if signedIn();
+      allow read: if resource.data.active == true || signedIn();
       allow write: if admin() || coordinatorOf(request.resource.data.districtId);
     }
 
     match /classes/{classId} {
-      allow read: if signedIn();
+      allow read: if resource.data.active == true || signedIn();
       allow create: if admin() || coordinatorOf(request.resource.data.districtId);
       allow update: if admin() || coordinatorOf(resource.data.districtId) ||
         (directorOf(classId) && request.resource.data.districtId == resource.data.districtId &&

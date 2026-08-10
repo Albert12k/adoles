@@ -297,16 +297,17 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
         const userRef = doc(db!, 'users', request.userId);
         if (request.requestedRole === 'director') {
           if (!request.classId) throw new Error('A solicitação não possui uma classe válida.');
-          transaction.update(userRef, { role: 'director', districtId: request.districtId, classIds: arrayUnion(request.classId) });
+          transaction.update(userRef, { role: 'director', pendingRole: null, districtId: request.districtId, classIds: arrayUnion(request.classId) });
           transaction.update(doc(db!, 'classes', request.classId), { directorIds: arrayUnion(request.userId) });
         } else if (request.requestedRole === 'coordinator') {
           if (!request.inviteCode) throw new Error('A solicitação não possui convite administrativo.');
           const coordinatorInvite = await transaction.get(doc(db!, 'coordinatorInvites', request.inviteCode));
           if (!coordinatorInvite.exists() || !coordinatorInvite.data().active || coordinatorInvite.data().districtId !== request.districtId) throw new Error('Este convite não está mais disponível.');
-          transaction.update(userRef, { role: 'coordinator', districtId: request.districtId });
+          transaction.update(userRef, { role: 'coordinator', pendingRole: null, districtId: request.districtId });
           transaction.update(doc(db!, 'coordinatorInvites', request.inviteCode), { active: false, usedBy: request.userId, usedAt: serverTimestamp() });
         }
       }
+      if (!approved) transaction.update(doc(db!, 'users', request.userId), { pendingRole: null });
       transaction.update(requestRef, {
         status: approved ? 'approved' : 'rejected', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp(),
       });
