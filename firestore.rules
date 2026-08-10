@@ -74,8 +74,8 @@ service cloud.firestore {
     match /classJoinRequests/{requestId} {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'pending';
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
-        roleIs('director') || roleIs('coordinator') || admin());
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin() ||
+        directorOf(resource.data.classId) || coordinatorOf(resource.data.districtId));
       allow update: if admin() || roleIs('coordinator') || directorOf(resource.data.classId);
     }
 

@@ -32,8 +32,8 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = selectedClassId
-          ? query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', '==', selectedClassId), where('status', '==', 'pending'), limit(30))
-          : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30));
+          ? query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', '==', selectedClassId), limit(100))
+          : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), limit(100));
         }
       } else if (type === 'leadershipTransfer') {
         approvalsQuery = profile.role === 'admin' ? query(collection(db!, 'leadershipTransfers'), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'leadershipTransfers'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
@@ -44,7 +44,7 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         if (profile.role === 'admin') approvalsQuery = query(collection(db!, 'roleRequests'), where('status', '==', 'pending'), limit(30));
         else approvalsQuery = query(collection(db!, 'roleRequests'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
       }
-      unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.map(item => {
+      unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.filter(item => item.data().status === 'pending').map(item => {
         const data = item.data();
         return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', evidenceUrl: type === 'attendance' || type === 'challenge' ? data.evidenceUrl : undefined, copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? `${data.source === 'bible' ? `Bíblia${data.passage ? ` · ${data.passage}` : ''}` : data.source === 'book' ? 'Livro' : 'Lição'} — ${String(data.summary ?? 'Resumo enviado')}` : type === 'attendance' ? `Semana ${data.week} · foto enviada para validação` : type === 'classJoinRequest' ? `${data.className ?? 'Base'} · ${data.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}` : type === 'challenge' ? `${data.className ?? 'Base'} · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
       })));
