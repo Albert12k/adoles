@@ -8,6 +8,7 @@ node_modules/
 dist/
 dist-audit/
 web-build/
+.expo-check/
 expo-env.d.ts
 
 # Native
