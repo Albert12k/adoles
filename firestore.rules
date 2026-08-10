@@ -215,7 +215,8 @@ service cloud.firestore {
           request.resource.data.districtId == resource.data.districtId && request.resource.data.classId == resource.data.classId &&
           request.resource.data.bonusPoints == resource.data.bonusPoints &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description', 'evidence', 'status', 'reviewerFeedback', 'resubmissionCount', 'resubmittedAt'])) ||
-        (coordinatorOf(resource.data.districtId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewerFeedback', 'reviewedBy', 'reviewedAt']));
+        (coordinatorOf(resource.data.districtId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'bonusPoints', 'reviewerFeedback', 'reviewedBy', 'reviewedAt']) &&
+          request.resource.data.bonusPoints >= 0 && request.resource.data.bonusPoints <= 500);
     }
 
     match /scores/{scoreId} {

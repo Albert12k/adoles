@@ -166,7 +166,7 @@ export async function endQuizNow(quizId: string) {
   return { success: true, submittedAttempts: attempts.size, reviewedAttempts: reviewed };
 }
 
-export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean, options?: { evaluation?: 'excellent' | 'good' | 'revise'; feedback?: string; attendanceNote?: string }) {
+export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer', itemId: string, approved: boolean, options?: { evaluation?: 'excellent' | 'good' | 'revise'; feedback?: string; attendanceNote?: string; bonusPoints?: number }) {
   if (type === 'leadershipTransfer') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para analisar a troca.');
     let requestData: Record<string, any> = {};
@@ -210,7 +210,9 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
       if (data.status !== 'pending') throw new Error('Este desafio já foi analisado.');
       challengeData = data;
       const status = approved ? 'approved' : 'rejected';
-      transaction.update(challengeRef, { status, reviewerFeedback: options?.feedback?.trim().slice(0, 500) ?? '', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
+      const bonusPoints = approved ? Math.min(500, Math.max(10, Number(options?.bonusPoints ?? 0))) : Number(data.bonusPoints ?? 0);
+      if (approved && (!Number.isFinite(options?.bonusPoints) || Number(options?.bonusPoints) < 10)) throw new Error('Defina entre 10 e 500 pontos para aprovar o desafio.');
+      transaction.update(challengeRef, { status, bonusPoints, reviewerFeedback: options?.feedback?.trim().slice(0, 500) ?? '', reviewedBy: auth!.currentUser!.uid, reviewedAt: serverTimestamp() });
       if (approved) {
         transaction.set(doc(db!, 'scores', `challenge_${itemId}`), { classId: data.classId, districtId: data.districtId, ageGroup: data.ageGroup ?? 'adolescentes', source: 'challenge', points: Number(data.bonusPoints ?? 0), createdAt: serverTimestamp() });
         transaction.set(doc(db!, 'muralPosts', `challenge_${itemId}`), { classId: data.classId, districtId: data.districtId, type: 'challenge', icon: '◆', title: data.title, copy: `${data.className ?? 'A base'} concluiu o desafio e ganhou +${data.bonusPoints ?? 0} pontos!`, evidence: data.evidence ?? '', reactions: [], createdAt: serverTimestamp() });

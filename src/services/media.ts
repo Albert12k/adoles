@@ -35,6 +35,21 @@ export async function selectAttendancePhoto() {
   return selection.assets[0].uri;
 }
 
+export async function selectAndUploadChallengePhoto(classId?: string) {
+  const user = auth?.currentUser;
+  if (!user) throw new Error('Entre novamente para enviar a foto do desafio.');
+  if (!classId) throw new Error('Selecione a base antes de enviar a foto.');
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) throw new Error('Permita o acesso às fotos para enviar a evidência.');
+  const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82, allowsEditing: true, aspect: [4, 3] });
+  if (selection.canceled) return null;
+  const localUri = selection.assets[0].uri;
+  const blob = await (await fetch(localUri)).blob();
+  const path = `${user.uid}/${classId}/challenges/${Date.now()}.jpg`;
+  const url = await uploadPrivateFile('attendance', path, blob, blob.type || 'image/jpeg');
+  return { localUri, url };
+}
+
 export async function uploadSelectedAttendancePhoto(localUri: string, week: number, quarter: number, year: number, userName?: string) {
   const scope = await currentScope();
   const evidenceUrl = await uploadAttendanceEvidence(scope.user.uid, scope.classId, localUri);
