@@ -444,7 +444,6 @@ export async function getManagedClass(classId?: string) {
       const userId = String(request.userId);
       const member = { id: userId, name: String(request.name ?? 'Adolescente'), role: 'student' };
       repair.set(doc(db!, 'classMembers', `${selected.id}_${userId}`), { classId: selected.id, userId, name: member.name, role: 'student', active: true, joinedAt: serverTimestamp(), recoveredFromRequest: item.id });
-      repair.update(doc(db!, 'users', userId), { classIds: arrayUnion(selected.id), districtId: request.districtId ?? selected.data().districtId });
       memberMap.set(userId, member);
     });
     await repair.commit();
