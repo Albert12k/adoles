@@ -76,18 +76,14 @@ service cloud.firestore {
         request.resource.data.status == 'pending';
       allow read: if signedIn() && (resource.data.userId == request.auth.uid ||
         roleIs('director') || roleIs('coordinator') || admin());
-      allow update: if admin() || roleIs('coordinator') ||
-        (roleIs('director') && resource.data.classId in profile().classIds);
+      allow update: if admin() || roleIs('coordinator') || directorOf(resource.data.classId);
     }
 
     match /classMembers/{memberId} {
-      allow read: if admin() || roleIs('coordinator') ||
-        (roleIs('director') && resource.data.classId in profile().classIds) ||
+      allow read: if admin() || roleIs('coordinator') || directorOf(resource.data.classId) ||
         (signedIn() && resource.data.userId == request.auth.uid);
-      allow create: if admin() || roleIs('coordinator') ||
-        (roleIs('director') && request.resource.data.classId in profile().classIds);
-      allow update: if admin() || roleIs('coordinator') ||
-        (roleIs('director') && resource.data.classId in profile().classIds);
+      allow create: if admin() || roleIs('coordinator') || directorOf(request.resource.data.classId);
+      allow update: if admin() || roleIs('coordinator') || directorOf(resource.data.classId);
     }
 
     match /leadershipTransfers/{transferId} {
