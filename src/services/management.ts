@@ -430,9 +430,24 @@ export async function getManagedClass(classId?: string) {
     : await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
   if (classes.empty) return { classId: '', className: '', inviteCode: '', members: [] };
   const selected = classes.docs[0];
-  const [invites, members] = await Promise.all([
+  const [invites, members, joinRequests] = await Promise.all([
     getDocs(query(collection(db, 'classInvites'), where('classId', '==', selected.id), limit(1))),
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true), limit(100))),
+    getDocs(query(collection(db, 'classJoinRequests'), where('classId', '==', selected.id), limit(100))),
   ]);
-  return { classId: selected.id, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: members.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) };
+  const memberMap = new Map(members.docs.map(item => [String(item.data().userId), { id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') }]));
+  const missingApproved = joinRequests.docs.filter(item => item.data().status === 'approved' && item.data().userId && !memberMap.has(String(item.data().userId)));
+  if (missingApproved.length) {
+    const repair = writeBatch(db);
+    missingApproved.forEach(item => {
+      const request = item.data();
+      const userId = String(request.userId);
+      const member = { id: userId, name: String(request.name ?? 'Adolescente'), role: 'student' };
+      repair.set(doc(db!, 'classMembers', `${selected.id}_${userId}`), { classId: selected.id, userId, name: member.name, role: 'student', active: true, joinedAt: serverTimestamp(), recoveredFromRequest: item.id });
+      repair.update(doc(db!, 'users', userId), { classIds: arrayUnion(selected.id), districtId: request.districtId ?? selected.data().districtId });
+      memberMap.set(userId, member);
+    });
+    await repair.commit();
+  }
+  return { classId: selected.id, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: [...memberMap.values()] };
 }
