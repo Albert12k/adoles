@@ -623,7 +623,15 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
     try {
-      const user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined, inviteCode: selectedRole === 'coordenador' ? invite : undefined });
+      let user;
+      try {
+        user = await registerUser(name, email, password, mapRole(selectedRole), { districtId: selectedDistrict || undefined, classId: selectedClass || undefined, inviteCode: selectedRole === 'coordenador' ? invite : undefined });
+      } catch (registrationError) {
+        const code = (registrationError as { code?: string }).code ?? '';
+        if (selectedRole !== 'adolescente' || code !== 'auth/email-already-in-use') throw registrationError;
+        try { user = await loginUser(email, password); }
+        catch { throw new Error('Este e-mail já possui uma conta. Informe a mesma senha usada anteriormente ou utilize “Esqueci minha senha” na tela de login.'); }
+      }
       if (selectedRole === 'adolescente') {
         if (invite.trim().length >= 5 && inviteState === 'valid') await requestClassEntry(user.uid, invite);
         else await requestClassEntryForClass(user.uid, selectedClass);
