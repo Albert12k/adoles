@@ -7,8 +7,10 @@ service cloud.firestore {
     function admin() { return roleIs('admin'); }
     function coordinatorOf(districtId) { return admin() || (roleIs('coordinator') && profile().districtId == districtId); }
     function directorOf(classId) { return admin() || (roleIs('director') &&
-      (request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.directorIds || classId in profile().classIds)); }
-    function memberOf(classId) { return signedIn() && classId in profile().classIds; }
+      ((('classIds' in profile()) && classId in profile().classIds) ||
+       (('directorIds' in get(/databases/$(database)/documents/classes/$(classId)).data) &&
+        request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.directorIds))); }
+    function memberOf(classId) { return signedIn() && ('classIds' in profile()) && classId in profile().classIds; }
 
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || admin() ||
