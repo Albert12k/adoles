@@ -1137,6 +1137,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const [dashboardInsights, setDashboardInsights] = useState<DashboardInsights>({ pending: 0, recent: 0, alert: 'Atualizando o painel...', weeklyValues: Array(7).fill(0), weeklyLabels: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'], trend: 0 });
   const leadership = useLeadershipProfile(role);
   const [activeClassId, setActiveClassId] = useState('');
+  const [showClassPicker, setShowClassPicker] = useState(false);
   useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
   const activeManagedClass = leadership.managedClasses.find(item => item.id === activeClassId) ?? leadership.managedClasses[0];
   const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
@@ -1155,11 +1156,11 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
       ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
       ['🏆', 'Publicar ranking semanal', 'Liberar notas e placar para a turma', ''],
       ['★', 'Encerrar período', 'Relatório trimestral e melhores do ano', ''],
-      ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', 'NOVO'],
-      ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', 'RASCUNHO'],
-      ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', '7'],
-      ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', '3'],
-      ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', '3'],
+      ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', ''],
+      ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', ''],
+      ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', ''],
+      ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', ''],
+      ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', ''],
       ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', ''],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
       ['⚑', 'Atividades externas', 'Criar programações para a própria base', ''],
@@ -1168,19 +1169,19 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
     ]
     : role === 'coordenador'
       ? [
-        ['✓', 'Aprovar diretores', 'Novos responsáveis aguardando análise', '3'],
+        ['✓', 'Aprovar diretores', 'Novos responsáveis aguardando análise', ''],
         ['⇄', 'Aprovar transferências', 'Trocas de liderança aguardando análise', ''],
         ['◷', 'Histórico de lideranças', 'Transferências e revogações registradas', ''],
-        ['◆', 'Validar desafios', 'Evidências enviadas pelas classes', '2'],
-        ['⌘', 'Classes do distrito', 'Desempenho por igreja e faixa', '12'],
+        ['◆', 'Validar desafios', 'Evidências enviadas pelas classes', ''],
+        ['⌘', 'Classes do distrito', 'Desempenho por igreja e faixa', ''],
         ['◉', 'Encontros distritais', 'Criar e gerenciar próximos eventos', ''],
         ['⇩', 'Relatório trimestral', 'Exportar dados consolidados', ''],
       ]
       : [
-        ['⌘', 'Distritos', 'Coordenadores e estrutura regional', '8'],
-        ['⌂', 'Igrejas e classes', 'Todas as turmas cadastradas', '47'],
+        ['⌘', 'Distritos', 'Coordenadores e estrutura regional', ''],
+        ['⌂', 'Igrejas e classes', 'Todas as turmas cadastradas', ''],
         ['♙', 'Aprovar entradas de adolescentes', 'Solicitações que ainda aguardam uma base', ''],
-        ['✓', 'Aprovações pendentes', 'Intervenções que precisam de atenção', '5'],
+        ['✓', 'Aprovações pendentes', 'Intervenções que precisam de atenção', ''],
         ['♙', 'Gerenciar coordenadores', 'Convites, transferências e acessos', ''],
         ['⚠', 'Solicitações de exclusão', 'Analisar privacidade e suspensão de contas', ''],
         ['⇩', 'Relatório geral', 'Indicadores consolidados do projeto', ''],
@@ -1193,7 +1194,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
         {section === 'painel' && <View style={[styles.managementHero, isWide && styles.managementHeroWide]}>
           <View style={styles.managementTop}><View><Text style={styles.eyebrowLight}>{roleName.toUpperCase()}</Text><Text style={styles.managementGreeting}>Olá, {leadership.name}</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>{leadership.name[0]?.toUpperCase() ?? 'U'}</Text></View></View>
           <Text style={styles.managementScope}>{scope}</Text>
-          {role === 'diretor' && <Pressable style={styles.classSelector}><Text style={styles.classSelectorText}>Turma ativa: Adolescentes⌄</Text></Pressable>}
+          {role === 'diretor' && <Pressable style={styles.classSelector} onPress={() => setShowClassPicker(value => !value)}><Text style={styles.classSelectorText}>{activeManagedClass ? `Turma ativa: ${activeManagedClass.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'} ${showClassPicker ? '⌃' : '⌄'}` : 'Nenhuma turma vinculada'}</Text></Pressable>}
         </View>}
         <ScrollView style={styles.scroll} contentContainerStyle={[styles.managementContent, isWide && styles.managementContentWide]} showsVerticalScrollIndicator={false}>
           {section === 'painel' && <>
@@ -1203,7 +1204,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
             <View style={styles.sectionHeaderManagement}><Text style={styles.sectionTitle}>Desempenho</Text><Pressable onPress={() => { setSection('gestao'); setSelectedAction('Relatório da base'); }} hitSlop={10}><Text style={styles.seeAll}>Ver relatório ›</Text></Pressable></View>
             <View style={styles.performanceCard}><View style={styles.performanceTop}><Text style={styles.weekTitle}>Atividade nas últimas 7 semanas</Text><Text style={[styles.performanceUp, dashboardInsights.trend < 0 && { color: colors.coral }]}>{dashboardInsights.trend >= 0 ? '↑' : '↓'} {Math.abs(dashboardInsights.trend)}%</Text></View><View style={styles.barChart}>{dashboardInsights.weeklyValues.map((value, index) => <View key={index} style={[styles.chartBar, { height: value ? Math.max(12, Math.round(value / maxWeeklyActivity * 100)) : 4 }, index === 6 && styles.chartBarActive]} />)}</View><View style={styles.chartLabels}>{dashboardInsights.weeklyLabels.map(label => <Text key={label} style={styles.chartLabel}>{label}</Text>)}</View></View>
           </>}
-          {role === 'diretor' && leadership.managedClasses.length > 0 && <View style={styles.classSwitcher}><Text style={styles.authLabel}>BASE ATIVA</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{leadership.managedClasses.map(item => <Pressable key={item.id} onPress={() => { setActiveClassId(item.id); setSelectedAction(null); }} style={[styles.classSwitchButton, activeClassId === item.id && styles.classSwitchButtonActive]}><Text style={[styles.classSwitchName, activeClassId === item.id && styles.classSwitchNameActive]}>{item.name}</Text><Text style={styles.classSwitchGroup}>{item.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></Pressable>)}</ScrollView></View>}
+          {role === 'diretor' && showClassPicker && leadership.managedClasses.length > 0 && <View style={styles.classSwitcher}><Text style={styles.authLabel}>ESCOLHA A TURMA ATIVA</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{leadership.managedClasses.map(item => <Pressable key={item.id} onPress={() => { setActiveClassId(item.id); setSelectedAction(null); setShowClassPicker(false); }} style={[styles.classSwitchButton, activeClassId === item.id && styles.classSwitchButtonActive]}><Text style={[styles.classSwitchName, activeClassId === item.id && styles.classSwitchNameActive]}>{item.name}</Text><Text style={styles.classSwitchGroup}>{item.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}</Text></Pressable>)}</ScrollView></View>}
           {section === 'gestao' && (selectedAction ? <ManagementDetail title={selectedAction} role={role} selectedClassId={activeClassId} onBack={() => setSelectedAction(null)} /> : <><Text style={styles.pageEyebrow}>FERRAMENTAS</Text><Text style={styles.pageTitle}>Gestão</Text><Text style={styles.pageIntro}>Tudo que você precisa para acompanhar seu ministério.</Text>{actions.map(([icon, title, copy, badge]) => <ActionRow key={title} icon={icon} title={title} copy={copy} badge={badge || undefined} onPress={() => setSelectedAction(title)} />)}{role === 'diretor' && <ActionRow icon="♙" title="Gerenciar membros" copy="Convite, lista, transferências e acessos" onPress={() => setSelectedAction('Gerenciar membros')} />}</>)}
           {section === 'atividade' && <><Text style={styles.pageEyebrow}>ÚLTIMAS ATUALIZAÇÕES</Text><Text style={styles.pageTitle}>Atividade</Text><Text style={styles.pageIntro}>Acompanhe o que realmente aconteceu no seu alcance de liderança.</Text><View style={styles.scopeWrap}>{(['all', 'cadastro', 'estudo', 'presenca', 'desafio', 'evento', 'lideranca'] as const).map(filter => { const labels = { all: 'Tudo', cadastro: 'Cadastros', estudo: 'Estudos', presenca: 'Presenças', desafio: 'Desafios', evento: 'Encontros', lideranca: 'Liderança' }; return <Pressable key={filter} style={[styles.scopeChip, activityFilter === filter && styles.scopeChipActive]} onPress={() => setActivityFilter(filter)}><Text style={[styles.scopeChipText, activityFilter === filter && styles.scopeChipTextActive]}>{labels[filter]}</Text></Pressable>; })}</View><Pressable style={styles.memberActionButton} disabled={activityLoading} onPress={refreshActivity}><Text style={styles.memberActionText}>{activityLoading ? 'Atualizando...' : '↻ Atualizar histórico'}</Text></Pressable>{activityLoading && <ActivityIndicator color={colors.tealMedium} />}{activityError !== '' && <Text style={styles.authError}>{activityError}</Text>}{!activityLoading && leadershipActivity.filter(item => activityFilter === 'all' || item.category === activityFilter).length === 0 && <View style={styles.formCard}><Text style={styles.manageTitle}>Nenhuma atividade nesta categoria</Text><Text style={styles.manageCopy}>As novas ações aparecerão aqui automaticamente.</Text></View>}{leadershipActivity.filter(item => activityFilter === 'all' || item.category === activityFilter).map(item => <ActionRow key={item.id} icon={item.icon} title={item.title} copy={`${item.copy} · ${relativeActivityTime(item.occurredAt)}`} />)}</>}
           {section === 'perfil' && profilePanel === 'main' && <><View style={styles.profileTop}><View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{(leadershipSettings?.name ?? leadership.name)[0]?.toUpperCase() ?? 'U'}</Text></View><Text style={styles.profileName}>{leadershipSettings?.name ?? leadership.name}</Text><Text style={styles.profileClass}>{roleName}</Text><Text style={styles.profileStatus}>{scope}</Text></View><ActionRow icon="⚙" title="Configurações" copy="Conta, notificações e privacidade" onPress={() => setProfilePanel('settings')} /><ActionRow icon="?" title="Ajuda" copy="Orientações sobre o aplicativo" onPress={() => setProfilePanel('help')} /><Pressable style={styles.signOutButton} disabled={signingOut} onPress={performSignOut}><Text style={styles.signOutText}>{signingOut ? 'Saindo...' : 'Sair da conta'}</Text></Pressable></>}

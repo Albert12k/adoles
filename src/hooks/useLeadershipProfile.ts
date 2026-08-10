@@ -28,9 +28,11 @@ export function useLeadershipProfile(role: LeadershipRole) {
         if (active) setState({ name: profile.name ?? 'Coordenador', scope: `Distrito ${district.data()?.name ?? ''}`.trim(), metrics: [[String(churches.data().count), 'igrejas'], [String(classes.data().count), 'classes'], ['0', 'pendências']], managedClasses: [] });
       } else {
         const classes = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', auth!.currentUser!.uid), limit(10)));
-        const selected = classes.docs[0];
+        const recovered = classes.empty ? (await Promise.all((profile.classIds ?? []).map((classId: string) => getDoc(doc(db!, 'classes', classId))))).filter(item => item.exists()) : [];
+        const managedDocs = classes.empty ? recovered : classes.docs;
+        const selected = managedDocs[0];
         const members = selected ? await getCountFromServer(query(collection(db!, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true))) : null;
-        if (active) setState({ name: profile.name ?? 'Diretor', scope: selected?.data().name ?? 'Classe ainda não definida', metrics: [[String(members?.data().count ?? 0), 'membros ativos'], ['0', 'pendências'], ['0', 'atividades']], managedClasses: classes.docs.map(item => ({ id: item.id, name: item.data().name ?? 'Base', ageGroup: item.data().ageGroup ?? 'adolescentes' })) });
+        if (active) setState({ name: profile.name ?? 'Diretor', scope: selected?.data()?.name ?? 'Classe ainda não definida', metrics: [[String(members?.data().count ?? 0), 'membros ativos'], ['0', 'pendências'], ['0', 'atividades']], managedClasses: managedDocs.map(item => ({ id: item.id, name: item.data()?.name ?? 'Base', ageGroup: item.data()?.ageGroup ?? 'adolescentes' })) });
       }
     })().catch(() => undefined);
     return () => { active = false; };

@@ -14,20 +14,28 @@ export async function createInitialStructure(input: { districtName: string; chur
   if (!db) throw new Error('Firebase ainda não foi configurado.');
   const districtId = slugify(input.districtName);
   const churchId = `${districtId}-${slugify(input.churchName)}`;
-  const classId = `${churchId}-${slugify(input.className)}`;
+  const classId = `${churchId}-${slugify(input.className)}-${slugify(input.ageGroup)}`;
   if (!districtId || !churchId || !classId) throw new Error('Preencha os nomes da estrutura.');
+  if ((await getDoc(doc(db, 'classes', classId))).exists()) throw new Error('Esta turma e faixa etária já estão cadastradas nesta igreja.');
 
+  const siblings = await getDocs(query(collection(db, 'classes'), where('churchId', '==', churchId)));
+  const siblingClasses = siblings.docs.filter(item => String(item.data().name ?? '').trim().toLowerCase() === input.className.trim().toLowerCase());
+  const linkedDirectors = new Set<string>(siblingClasses.flatMap(item => item.data().directorIds ?? []));
+  for (const sibling of siblingClasses) {
+    const profiles = await getDocs(query(collection(db, 'users'), where('classIds', 'array-contains', sibling.id)));
+    profiles.docs.filter(item => item.data().role === 'director').forEach(item => linkedDirectors.add(item.id));
+  }
   const code = inviteCode();
   const batch = writeBatch(db);
   batch.set(doc(db, 'districts', districtId), {
     name: input.districtName.trim(), active: true, createdAt: serverTimestamp(),
-  });
+  }, { merge: true });
   batch.set(doc(db, 'churches', churchId), {
     name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp(),
-  });
+  }, { merge: true });
   batch.set(doc(db, 'classes', classId), {
     name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup,
-    directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp(),
+    directorIds: [...linkedDirectors], activeMemberCount: 0, active: true, createdAt: serverTimestamp(),
   });
   batch.set(doc(db, 'classInvites', classId), {
     classId, districtId, inviteCode: code, active: true, updatedAt: serverTimestamp(),
@@ -63,11 +71,19 @@ export async function createCoordinatorStructure(input: { churchName: string; cl
   const districtId = String(profile?.districtId || '');
   if (profile?.role !== 'coordinator' || !districtId) throw new Error('Sua conta ainda não possui um distrito aprovado.');
   const churchId = `${districtId}-${slugify(input.churchName)}`;
-  const classId = `${churchId}-${slugify(input.className)}`;
+  const classId = `${churchId}-${slugify(input.className)}-${slugify(input.ageGroup)}`;
+  if ((await getDoc(doc(db, 'classes', classId))).exists()) throw new Error('Esta turma e faixa etária já estão cadastradas nesta igreja.');
+  const siblings = await getDocs(query(collection(db, 'classes'), where('churchId', '==', churchId)));
+  const siblingClasses = siblings.docs.filter(item => String(item.data().name ?? '').trim().toLowerCase() === input.className.trim().toLowerCase());
+  const linkedDirectors = new Set<string>(siblingClasses.flatMap(item => item.data().directorIds ?? []));
+  for (const sibling of siblingClasses) {
+    const profiles = await getDocs(query(collection(db, 'users'), where('classIds', 'array-contains', sibling.id)));
+    profiles.docs.filter(item => item.data().role === 'director').forEach(item => linkedDirectors.add(item.id));
+  }
   const code = inviteCode();
   const batch = writeBatch(db);
-  batch.set(doc(db, 'churches', churchId), { name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp() });
-  batch.set(doc(db, 'classes', classId), { name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup, directorIds: [], activeMemberCount: 0, active: true, createdAt: serverTimestamp() });
+  batch.set(doc(db, 'churches', churchId), { name: input.churchName.trim(), districtId, active: true, createdAt: serverTimestamp() }, { merge: true });
+  batch.set(doc(db, 'classes', classId), { name: input.className.trim(), districtId, churchId, ageGroup: input.ageGroup, directorIds: [...linkedDirectors], activeMemberCount: 0, active: true, createdAt: serverTimestamp() });
   batch.set(doc(db, 'classInvites', classId), { classId, districtId, inviteCode: code, active: true, updatedAt: serverTimestamp() });
   batch.set(doc(db, 'classInviteCodes', code), { classId, districtId, className: input.className.trim(), churchName: input.churchName.trim(), ageGroup: input.ageGroup, active: true, createdAt: serverTimestamp() });
   await batch.commit();
