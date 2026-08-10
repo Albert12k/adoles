@@ -34,7 +34,7 @@ export async function requestClassEntry(userId: string, inviteCode: string) {
   const classId = invite.data().classId as string;
   const profile = await getDoc(doc(firestore, 'users', userId));
   await setDoc(doc(firestore, 'classJoinRequests', `${classId}_${userId}`), {
-    userId, classId, districtId: invite.data().districtId, name: profile.data()?.name ?? 'Adolescente', status: 'pending', createdAt: serverTimestamp(),
+    userId, classId, districtId: invite.data().districtId, churchId: invite.data().churchId ?? '', className: invite.data().className ?? 'Base', ageGroup: invite.data().ageGroup ?? 'adolescentes', name: profile.data()?.name ?? 'Adolescente', status: 'pending', createdAt: serverTimestamp(),
   });
   return { classId, className: '' };
 }
@@ -54,6 +54,7 @@ export async function requestClassEntryForClass(userId: string, classId: string)
     districtId: selectedClass.data().districtId,
     churchId: selectedClass.data().churchId,
     className: selectedClass.data().name ?? 'Base',
+    ageGroup: selectedClass.data().ageGroup ?? 'adolescentes',
     name: profile.data()?.name ?? 'Adolescente',
     status: 'pending',
     createdAt: serverTimestamp(),
