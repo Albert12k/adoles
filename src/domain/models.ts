@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'coordinator' | 'director' | 'student';
+export type UserRole = 'admin' | 'coordinator' | 'director' | 'teacher' | 'student';
 export type AgeGroup = 'adolescentes' | 'pre_adolescentes';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 

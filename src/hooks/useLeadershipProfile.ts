@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, doc, getCountFromServer, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
-type LeadershipRole = 'diretor' | 'coordenador' | 'admin';
+type LeadershipRole = 'diretor' | 'professor' | 'coordenador' | 'admin';
 
 export function useLeadershipProfile(role: LeadershipRole) {
   const [state, setState] = useState<{ name: string; scope: string; metrics: string[][]; managedClasses: Array<{ id: string; name: string; ageGroup: string }> }>({ name: 'Usuário', scope: 'Carregando...', metrics: [['0', 'cadastros'], ['0', 'classes'], ['0', 'membros']], managedClasses: [] });

@@ -5,7 +5,7 @@ import { getManagedClass } from '../services/management';
 import { getEquivalentClassIds } from '../services/classAliases';
 
 export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer';
-export interface ApprovalItem { id: string; name: string; copy: string; evidenceUrl?: string; }
+export interface ApprovalItem { id: string; name: string; copy: string; userId?: string; details?: Array<{ question: string; answer: string }>; evidenceUrl?: string; }
 export interface ClassMember { id: string; name: string; role: string; }
 export interface LeadershipHistoryItem { id: string; className: string; action: 'transfer' | 'revoke'; targetName: string; status: string; reviewedAt?: Date; }
 
@@ -50,10 +50,22 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         if (profile.role === 'admin') approvalsQuery = query(collection(db!, 'roleRequests'), where('status', '==', 'pending'), limit(30));
         else approvalsQuery = query(collection(db!, 'roleRequests'), where('districtId', '==', profile.districtId), where('status', '==', 'pending'), limit(30));
       }
-      unsubscribe = onSnapshot(approvalsQuery, snapshot => setItems(snapshot.docs.filter(item => item.data().status === 'pending' || type === 'studyRecord' && item.data().feedbackVisible === false || type === 'flashcard' && item.data().status !== 'approved').map(item => {
-        const data = item.data();
-        return { id: item.id, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', evidenceUrl: type === 'attendance' || type === 'challenge' ? data.evidenceUrl : undefined, copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? 'Resposta do quiz aguardando correção' : type === 'studyRecord' ? `${data.source === 'bible' ? `Bíblia${data.passage ? ` · ${data.passage}` : ''}` : data.source === 'book' ? 'Livro' : 'Lição'} — ${String(data.summary ?? 'Resumo enviado')}` : type === 'attendance' ? `Semana ${data.week} · foto enviada para validação` : type === 'classJoinRequest' ? `${data.className ?? 'Base'} · ${data.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}` : type === 'challenge' ? `${data.className ?? 'Base'} · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : 'coordenador'}` };
-      })), () => setItems([]));
+      unsubscribe = onSnapshot(approvalsQuery, async snapshot => {
+        const pending = snapshot.docs.filter(item => item.data().status === 'pending' || type === 'studyRecord' && item.data().feedbackVisible === false || type === 'flashcard' && item.data().status !== 'approved');
+        const mapped = await Promise.all(pending.map(async item => {
+          const data = item.data();
+          let details: ApprovalItem['details'];
+          let quizTitle = '';
+          if (type === 'quizAttempt' && data.quizId) {
+            const quiz = await getDoc(doc(db!, 'quizzes', String(data.quizId)));
+            quizTitle = String(quiz.data()?.title ?? 'Quiz semanal');
+            const questions = (quiz.data()?.questions ?? []) as Array<{ prompt?: string; options?: string[] }>;
+            details = questions.map((question, index) => { const raw = (data.answers ?? [])[index]; const answer = typeof raw === 'number' && question.options?.[raw] != null ? question.options[raw] : String(raw ?? 'Sem resposta'); return { question: question.prompt ?? `Questão ${index + 1}`, answer }; });
+          }
+          return { id: item.id, userId: data.userId, name: data.name ?? data.title ?? data.userName ?? 'Adolescente', details, evidenceUrl: type === 'attendance' || type === 'challenge' ? data.evidenceUrl : undefined, copy: type === 'leadershipTransfer' ? (data.action === 'transfer' ? `Transferir ${data.className} para ${data.targetName}` : `Revogar direção de ${data.className}`) : type === 'flashcard' ? `${data.front} → ${data.back}` : type === 'quizAttempt' ? `${quizTitle} · ${details?.length ?? 0} resposta(s)` : type === 'studyRecord' ? `${data.source === 'bible' ? `Bíblia${data.passage ? ` · ${data.passage}` : ''}` : data.source === 'book' ? 'Livro' : 'Lição'} — ${String(data.summary ?? 'Resumo enviado')}` : type === 'attendance' ? `Semana ${data.week} · foto enviada para validação` : type === 'classJoinRequest' ? `${data.className ?? 'Base'} · ${data.ageGroup === 'pre-adolescentes' ? 'Pré-adolescentes' : 'Adolescentes'}` : type === 'challenge' ? `${data.className ?? 'Base'} · desafio mensal` : `Pedido para ${data.requestedRole === 'director' ? 'diretor' : data.requestedRole === 'teacher' ? 'professor' : 'coordenador'}` } as ApprovalItem;
+        }));
+        if (active) setItems(mapped);
+      }, () => setItems([]));
     })();
     return () => { active = false; unsubscribe(); };
   }, [type, selectedClassId]);

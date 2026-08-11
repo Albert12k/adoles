@@ -11,13 +11,13 @@ const dateOf = (data: DocumentData) => {
 
 const item = (docItem: QueryDocumentSnapshot<DocumentData>, category: ActivityCategory, icon: string, title: string, copy: string): LeadershipActivity => ({ id: `${category}_${docItem.id}`, category, icon, title, copy, occurredAt: dateOf(docItem.data()) });
 
-export async function listLeadershipActivity(role: 'diretor' | 'coordenador' | 'admin', classId = ''): Promise<LeadershipActivity[]> {
+export async function listLeadershipActivity(role: 'diretor' | 'professor' | 'coordenador' | 'admin', classId = ''): Promise<LeadershipActivity[]> {
   if (!db || !auth?.currentUser) return [];
   const profile = (await getDoc(doc(db, 'users', auth.currentUser.uid))).data();
   const districtId = String(profile?.districtId ?? '');
   let activities: LeadershipActivity[] = [];
 
-  if (role === 'diretor' && classId) {
+  if ((role === 'diretor' || role === 'professor') && classId) {
     const [attendance, studies, joins] = await Promise.all([
       getDocs(query(collection(db, 'attendance'), where('classId', '==', classId))),
       getDocs(query(collection(db, 'studyRecords'), where('classId', '==', classId))),

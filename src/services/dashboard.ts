@@ -8,7 +8,7 @@ const timestampOf = (entry: QueryDocumentSnapshot<DocumentData>) => {
   return (data.updatedAt ?? data.reviewedAt ?? data.completedAt ?? data.createdAt ?? data.confirmedAt)?.toDate?.() as Date | undefined;
 };
 
-export async function loadDashboardInsights(role: 'diretor' | 'coordenador' | 'admin', classId = ''): Promise<DashboardInsights> {
+export async function loadDashboardInsights(role: 'diretor' | 'professor' | 'coordenador' | 'admin', classId = ''): Promise<DashboardInsights> {
   if (!db || !auth?.currentUser) return { pending: 0, recent: 0, alert: 'Entre novamente para atualizar o painel.', weeklyValues: Array(7).fill(0), weeklyLabels: [], trend: 0 };
   const profile = (await getDoc(doc(db, 'users', auth.currentUser.uid))).data();
   const districtId = String(profile?.districtId ?? '');
@@ -16,7 +16,17 @@ export async function loadDashboardInsights(role: 'diretor' | 'coordenador' | 'a
   let pending = 0;
   let alert = 'Nenhuma pendência urgente neste momento.';
 
-  if (role === 'diretor' && classId) {
+  if (role === 'professor' && classId) {
+    const [attendance, studies] = await Promise.all([
+      getDocs(query(collection(db, 'attendance'), where('classId', '==', classId))),
+      getDocs(query(collection(db, 'studyRecords'), where('classId', '==', classId))),
+    ]);
+    entries = [...attendance.docs, ...studies.docs];
+    const attendancePending = attendance.docs.filter(item => item.data().status === 'pending').length;
+    const studiesPending = studies.docs.filter(item => !item.data().evaluation || item.data().evaluation === 'resubmitted').length;
+    pending = attendancePending + studiesPending;
+    if (pending) alert = `${attendancePending} presença(s) e ${studiesPending} resumo(s) aguardam análise.`;
+  } else if (role === 'diretor' && classId) {
     const [joins, attendance, studies] = await Promise.all([
       getDocs(query(collection(db, 'classJoinRequests'), where('classId', '==', classId))),
       getDocs(query(collection(db, 'attendance'), where('classId', '==', classId))),

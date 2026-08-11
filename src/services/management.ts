@@ -297,9 +297,9 @@ export async function reviewLeadershipItem(type: 'attendance' | 'challenge' | 'r
         transaction.set(doc(db!, 'classMembers', `${request.classId}_${request.userId}`), { classId: request.classId, userId: request.userId, name: request.name ?? 'Adolescente', role: 'student', active: true, joinedAt: serverTimestamp() });
       } else if (approved) {
         const userRef = doc(db!, 'users', request.userId);
-        if (request.requestedRole === 'director') {
+        if (request.requestedRole === 'director' || request.requestedRole === 'teacher') {
           if (!request.classId) throw new Error('A solicitação não possui uma classe válida.');
-          transaction.update(userRef, { role: 'director', pendingRole: null, districtId: request.districtId, classIds: arrayUnion(request.classId) });
+          transaction.update(userRef, { role: request.requestedRole, pendingRole: null, districtId: request.districtId, classIds: arrayUnion(request.classId) });
           transaction.update(doc(db!, 'classes', request.classId), { directorIds: arrayUnion(request.userId) });
         } else if (request.requestedRole === 'coordinator') {
           if (!request.inviteCode) throw new Error('A solicitação não possui convite administrativo.');
@@ -451,9 +451,10 @@ export async function getManagedClass(classId?: string) {
     : await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
   if (classes.empty) return { classId: '', className: '', inviteCode: '', members: [] };
   const selected = classes.docs[0];
+  const profile = await getDoc(doc(db, 'users', auth.currentUser.uid));
   const [invites, members] = await Promise.all([
-    getDoc(doc(db, 'classInvites', selected.id)),
+    profile.data()?.role === 'director' ? getDoc(doc(db, 'classInvites', selected.id)) : Promise.resolve(null),
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true), limit(100))),
   ]);
-  return { classId: selected.id, className: selected.data().name, inviteCode: invites.data()?.inviteCode ?? '', members: members.docs.map(item => ({ id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') })) };
+  return { classId: selected.id, className: selected.data().name, inviteCode: invites?.data()?.inviteCode ?? '', members: members.docs.map(item => ({ id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') })) };
 }

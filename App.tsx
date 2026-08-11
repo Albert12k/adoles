@@ -48,7 +48,7 @@ import { loadDashboardInsights, type DashboardInsights } from './src/services/da
 import { exportMyData, loadMyDataSummary, type MyDataSummary } from './src/services/privacy';
 
 type Tab = 'Início' | 'Estudo' | 'Presença' | 'Quiz' | 'Mais';
-type Role = 'adolescente' | 'diretor' | 'coordenador' | 'admin';
+type Role = 'adolescente' | 'diretor' | 'professor' | 'coordenador' | 'admin';
 type AuthStep = 'welcome' | 'login' | 'register' | 'role' | 'invite' | 'pending';
 type QuizQuestionDraft = { type: 'multiple_choice' | 'true_false' | 'assertion_reason' | 'open' | 'identify_false'; prompt: string; options: string[]; correctAnswer: number | string };
 
@@ -622,7 +622,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     }).catch(() => setAuthError('Não foi possível carregar os distritos e igrejas.')).finally(() => setOptionsLoading(false));
   }, [step]);
 
-  const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
+  const mapRole = (selectedRole: Role) => selectedRole === 'adolescente' ? 'student' : selectedRole === 'diretor' ? 'director' : selectedRole === 'professor' ? 'teacher' : selectedRole === 'coordenador' ? 'coordinator' : 'admin';
   const finishRegistration = async (selectedRole: Role) => {
     if (!firebaseEnabled) return onComplete(selectedRole);
     setAuthBusy(true); setAuthError('');
@@ -641,7 +641,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
         else await requestClassEntryForClass(user.uid, selectedClass);
         await logoutUser(); setStep('pending'); return;
       }
-      if (selectedRole === 'diretor' || selectedRole === 'coordenador') {
+      if (selectedRole === 'diretor' || selectedRole === 'professor' || selectedRole === 'coordenador') {
         await logoutUser(); setStep('pending'); return;
       }
       onComplete(selectedRole);
@@ -656,7 +656,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
       const user = await loginUser(email, password);
       const savedRole = await getUserRole(user.uid);
       registerPushNotifications().catch(() => undefined);
-      onComplete(savedRole === 'director' ? 'diretor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
+      onComplete(savedRole === 'director' ? 'diretor' : savedRole === 'teacher' ? 'professor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'E-mail ou senha inválidos.');
     } finally { setAuthBusy(false); }
@@ -706,6 +706,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
     const roles: { key: Role; icon: string; title: string; copy: string }[] = [
       { key: 'adolescente', icon: '✦', title: 'Adolescente', copy: 'Estudar, participar e acompanhar minha jornada' },
       { key: 'diretor', icon: '◆', title: 'Diretor de classe', copy: 'Cuidar de uma ou mais turmas da minha igreja' },
+      { key: 'professor', icon: '✎', title: 'Professor da classe', copy: 'Publicar, corrigir e acompanhar a turma sem gerenciar membros' },
       { key: 'coordenador', icon: '⌘', title: 'Coordenador distrital', copy: 'Acompanhar as classes do meu distrito' },
       { key: 'admin', icon: '★', title: 'Administrador geral', copy: 'Gerenciar toda a estrutura do projeto' },
     ];
@@ -723,7 +724,7 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
               <View style={[styles.radio, role === item.key && styles.radioActive]}>{role === item.key && <View style={styles.radioDot} />}</View>
             </Pressable>
           ))}
-          {(role === 'diretor' || role === 'adolescente') && <View style={styles.scopeSection}>
+          {(role === 'diretor' || role === 'professor' || role === 'adolescente') && <View style={styles.scopeSection}>
             <Text style={styles.authLabel}>Distrito desejado</Text>
             {optionsLoading && <ActivityIndicator color={colors.tealMedium} />}
             <View style={styles.scopeWrap}>{registrationOptions.districts.map(item => <Pressable key={item.id} style={[styles.scopeChip, selectedDistrict === item.id && styles.scopeChipActive]} onPress={() => { const churchId = registrationOptions.churches.find(church => church.districtId === item.id)?.id ?? ''; setSelectedDistrict(item.id); setSelectedChurch(churchId); setSelectedClass(registrationOptions.classes.find(entry => entry.districtId === item.id && entry.churchId === churchId && entry.ageGroup === selectedAgeGroup)?.id ?? ''); }}><Text style={[styles.scopeChipText, selectedDistrict === item.id && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View>
@@ -734,8 +735,8 @@ function AuthFlow({ onComplete }: { onComplete: (role: Role) => void }) {
           </View>}
           {role === 'coordenador' && <View style={styles.scopeSection}><Text style={styles.authLabel}>Código de convite do administrador</Text><AuthField label="Convite" placeholder="Ex.: COORD-ABCD-1234" value={invite} onChangeText={text => setInvite(text.toUpperCase())} /><Text style={styles.manageCopy}>O convite já identifica automaticamente o seu distrito.</Text></View>}
           <Pressable
-            style={[styles.authPrimary, firebaseEnabled && (((role === 'diretor' || role === 'adolescente') && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
-            disabled={authBusy || optionsLoading || (firebaseEnabled && (((role === 'diretor' || role === 'adolescente') && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
+            style={[styles.authPrimary, firebaseEnabled && ((((role === 'diretor' || role === 'professor' || role === 'adolescente')) && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)) && styles.buttonDisabled]}
+            disabled={authBusy || optionsLoading || (firebaseEnabled && ((((role === 'diretor' || role === 'professor' || role === 'adolescente')) && (!selectedDistrict || !selectedChurch || !selectedClass)) || (role === 'coordenador' && invite.trim().length < 10)))}
             onPress={() => role === 'admin' ? setStep('login') : role === 'adolescente' ? setStep('invite') : finishRegistration(role)}
           >
             <Text style={styles.authPrimaryText}>{authBusy ? 'Criando conta...' : role === 'admin' ? 'Entrar como administrador' : 'Continuar'}</Text>
@@ -910,6 +911,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [directedActivities, setDirectedActivities] = useState<ClassActivity[]>([]);
   const [editingActivityId, setEditingActivityId] = useState('');
   const [selectedScenario, setSelectedScenario] = useState('auto');
+  const [approvalPersonFilter, setApprovalPersonFilter] = useState('all');
   const [scenarioPreviewIndex, setScenarioPreviewIndex] = useState(0);
   const [customScenario, setCustomScenario] = useState<PresenceScenario>({ id: 'custom', world: 'Personalizado', name: '', icon: '✨', goal: '', intro: '', color: '#E3F0D8', accent: '#16504D' });
   const [engagementMembers, setEngagementMembers] = useState<EngagementMember[]>([]);
@@ -961,14 +963,15 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   useEffect(() => { if (isDeletionManagement) listAccountDeletionRequests().then(setDeletionRequests).catch(error => setActionError(error instanceof Error ? error.message : 'Não foi possível carregar as solicitações.')); }, [isDeletionManagement]);
   useEffect(() => { if (!deletionToApprove || adminDeletionSeconds <= 0) return; const timer = setTimeout(() => setAdminDeletionSeconds(value => value - 1), 1000); return () => clearTimeout(timer); }, [deletionToApprove, adminDeletionSeconds]);
   const approvalType: ApprovalType | null = title.includes('transferências') ? 'leadershipTransfer' : title.includes('flashcards') ? 'flashcard' : title.includes('quizzes') ? 'quizAttempt' : title.includes('resumos') ? 'studyRecord' : title.includes('entradas') ? 'classJoinRequest' : title.includes('Presenças') || title.includes('presenças') ? 'attendance' : title.includes('desafios') || title.includes('Desafios') ? 'challenge' : title.includes('diretores') || title.includes('Aprovações') ? 'roleRequest' : null;
-  const liveApprovals = usePendingApprovals(approvalType, role === 'diretor' ? selectedClassId : undefined);
-  const classManagement = useClassManagement(role === 'diretor' ? selectedClassId : undefined);
+  const liveApprovals = usePendingApprovals(approvalType, role === 'diretor' || role === 'professor' ? selectedClassId : undefined);
+  const classManagement = useClassManagement(role === 'diretor' || role === 'professor' ? selectedClassId : undefined);
   useEffect(() => { if (isPresenceTheme && classManagement.classId) getPresenceScenario(classManagement.classId).then(result => { setSelectedScenario(result.setting); setScenarioPreviewIndex(Math.max(0, presenceScenarios.findIndex(item => item.id === result.scenario.id))); }).catch(() => undefined); }, [isPresenceTheme, classManagement.classId]);
-  const displayApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
+  const allApprovals = liveApprovals.length ? liveApprovals : firebaseEnabled ? [] : [
     { id: '', name: 'Marina Costa', copy: title.includes('Presença') ? 'Foto enviada hoje · 09:12' : 'Resumo da lição 4 · 246 palavras' },
     { id: '', name: 'João Pedro', copy: title.includes('Presença') ? 'Foto enviada hoje · 09:36' : 'Resumo da Bíblia · Josué 1' },
     { id: '', name: 'Sara Lima', copy: title.includes('Presença') ? 'Foto enviada hoje · 10:04' : 'Resumo do livro · capítulo 3' },
   ];
+  const displayApprovals = approvalPersonFilter === 'all' ? allApprovals : allApprovals.filter(item => (item.userId || item.name) === approvalPersonFilter);
   const displayMembers = classManagement.members.length || firebaseEnabled ? classManagement.members : [
     { id: 'marina-demo', name: 'Marina Costa', role: 'director' }, { id: 'joao-demo', name: 'João Pedro', role: 'student' }, { id: 'daniel-demo', name: 'Daniel Oliveira', role: 'student' }, { id: 'sara-demo', name: 'Sara Lima', role: 'student' },
   ];
@@ -1050,6 +1053,8 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
       <Text style={styles.pageEyebrow}>GESTÃO DA TURMA</Text><Text style={styles.pageTitle}>{title}</Text>
       <Text style={styles.pageIntro}>{isApproval ? 'Analise os itens pendentes e registre sua decisão.' : 'Prepare as informações que ficarão disponíveis para a turma.'}</Text>
       {isPresenceTheme && <View style={styles.formCard}><Text style={styles.sectionTitle}>Importar cenário próprio</Text><Text style={styles.manageCopy}>Monte uma experiência exclusiva para a sua base e confira a prévia antes de aplicar.</Text><Text style={styles.authLabel}>NOME DO CENÁRIO</Text><TextInput value={customScenario.name} onChangeText={name => setCustomScenario(current => ({ ...current, name }))} placeholder="Ex.: Caminho da Promessa" placeholderTextColor="#8A9892" style={styles.authInput} /><View style={styles.memberActions}><View style={styles.flex}><Text style={styles.authLabel}>SÍMBOLO</Text><TextInput value={customScenario.icon} onChangeText={icon => setCustomScenario(current => ({ ...current, icon }))} placeholder="✨" placeholderTextColor="#8A9892" style={styles.authInput} /></View><View style={styles.flex}><Text style={styles.authLabel}>META FINAL</Text><TextInput value={customScenario.goal} onChangeText={goal => setCustomScenario(current => ({ ...current, goal }))} placeholder="Ex.: CHEGADA" placeholderTextColor="#8A9892" style={styles.authInput} /></View></View><Text style={styles.authLabel}>MENSAGEM DA JORNADA</Text><TextInput value={customScenario.intro} onChangeText={intro => setCustomScenario(current => ({ ...current, intro }))} placeholder="Explique como cada presença faz a turma avançar." placeholderTextColor="#8A9892" style={styles.authInput} multiline /><View style={styles.memberActions}><View style={styles.flex}><Text style={styles.authLabel}>COR DO FUNDO</Text><TextInput value={customScenario.color} onChangeText={color => setCustomScenario(current => ({ ...current, color }))} placeholder="#E3F0D8" placeholderTextColor="#8A9892" style={styles.authInput} /></View><View style={styles.flex}><Text style={styles.authLabel}>COR DE DESTAQUE</Text><TextInput value={customScenario.accent} onChangeText={accent => setCustomScenario(current => ({ ...current, accent }))} placeholder="#16504D" placeholderTextColor="#8A9892" style={styles.authInput} /></View></View><View style={[styles.scenarioPreview, { backgroundColor: customScenario.color || '#E3F0D8' }]}><Text style={styles.scenarioPreviewIcon}>{customScenario.icon || '✨'}</Text><Text style={styles.challengeTitle}>{customScenario.name || 'Seu cenário aparecerá aqui'}</Text><Text style={styles.manageCopy}>{customScenario.intro || 'A mensagem da jornada será exibida aos adolescentes.'}</Text><Text style={[styles.challengeStatus, { color: customScenario.accent || '#16504D' }]}>Meta final: {customScenario.goal || 'DEFINIR'}</Text></View><Pressable style={[styles.memberActionButton, selectedScenario === 'custom' && styles.themeCardActive]} onPress={() => setSelectedScenario('custom')}><Text style={styles.memberActionText}>{selectedScenario === 'custom' ? '✓ Cenário próprio selecionado' : 'Usar este cenário próprio'}</Text></Pressable></View>}
+      {isApproval && approvalType === 'quizAttempt' && displayApprovals.length > 0 && <View style={styles.formCard}><Text style={styles.sectionTitle}>Filtrar por adolescente</Text><Text style={styles.manageCopy}>Escolha uma pessoa para analisar todas as respostas dela sem misturar com as demais.</Text><View style={styles.scopeWrap}><Pressable style={[styles.scopeChip, approvalPersonFilter === 'all' && styles.scopeChipActive]} onPress={() => setApprovalPersonFilter('all')}><Text style={[styles.scopeChipText, approvalPersonFilter === 'all' && styles.scopeChipTextActive]}>Todos · {displayApprovals.length}</Text></Pressable>{displayApprovals.map(item => <Pressable key={`filter_${item.id}`} style={[styles.scopeChip, approvalPersonFilter === (item.userId || item.name) && styles.scopeChipActive]} onPress={() => setApprovalPersonFilter(item.userId || item.name)}><Text style={[styles.scopeChipText, approvalPersonFilter === (item.userId || item.name) && styles.scopeChipTextActive]}>{item.name}</Text></Pressable>)}</View></View>}
+      {isApproval && approvalType === 'quizAttempt' && displayApprovals.map(item => <View key={`answers_${item.id}`} style={styles.formCard}><View style={styles.weekRow}><View style={styles.rankAvatar}><Text style={styles.rankAvatarText}>{item.name[0]}</Text></View><View style={styles.flex}><Text style={styles.sectionTitle}>{item.name}</Text><Text style={styles.manageCopy}>{item.copy}</Text></View><Pill tone="gold">AGUARDANDO</Pill></View><Text style={styles.authLabel}>RESPOSTAS ENVIADAS</Text>{item.details?.map((detail, index) => <View key={`${item.id}_${index}`} style={styles.quizAnswerReview}><Text style={styles.quizAnswerNumber}>{index + 1}</Text><View style={styles.flex}><Text style={styles.manageTitle}>{detail.question}</Text><Text style={styles.quizAnswerText}>{detail.answer}</Text></View></View>)}</View>)}
       {isContent && <View>
         <View style={styles.formCard}><Text style={styles.sectionTitle}>{editingContentId ? 'Editar conteúdo semanal' : 'Nova publicação semanal'}</Text><Text style={styles.manageCopy}>{editingContentId ? 'Troque somente o que precisa e publique a versão corrigida.' : 'A mesma semana será atualizada, sem criar publicações duplicadas.'}</Text>{editingContentId && <Pressable onPress={() => { setEditingContentId(''); setLessonPdf(null); setBookPdf(null); }}><Text style={styles.skipLink}>Cancelar edição</Text></Pressable>}</View>
         <AuthField label="Título da lição" placeholder="Título da semana" value={lessonTitle} onChangeText={setLessonTitle} />
@@ -1158,23 +1163,23 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const [activeClassId, setActiveClassId] = useState('');
   const [showClassPicker, setShowClassPicker] = useState(false);
   const pendingClassEntries = usePendingApprovals(role === 'diretor' ? 'classJoinRequest' : null, activeClassId);
-  const pendingQuizCorrections = usePendingApprovals(role === 'diretor' ? 'quizAttempt' : null, activeClassId);
-  const pendingStudyRecords = usePendingApprovals(role === 'diretor' ? 'studyRecord' : null, activeClassId);
-  const pendingAttendance = usePendingApprovals(role === 'diretor' ? 'attendance' : null, activeClassId);
-  const pendingFlashcards = usePendingApprovals(role === 'diretor' ? 'flashcard' : null, activeClassId);
-  useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
+  const pendingQuizCorrections = usePendingApprovals(role === 'diretor' || role === 'professor' ? 'quizAttempt' : null, activeClassId);
+  const pendingStudyRecords = usePendingApprovals(role === 'diretor' || role === 'professor' ? 'studyRecord' : null, activeClassId);
+  const pendingAttendance = usePendingApprovals(role === 'diretor' || role === 'professor' ? 'attendance' : null, activeClassId);
+  const pendingFlashcards = usePendingApprovals(role === 'diretor' || role === 'professor' ? 'flashcard' : null, activeClassId);
+  useEffect(() => { if ((role === 'diretor' || role === 'professor') && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
   const activeManagedClass = leadership.managedClasses.find(item => item.id === activeClassId) ?? leadership.managedClasses[0];
   const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
   useEffect(() => { if (section === 'atividade') refreshActivity(); }, [section, role, activeClassId]);
   useEffect(() => { if (section === 'perfil' && profilePanel === 'settings' && !leadershipSettings) getLeadershipSettings().then(setLeadershipSettings).catch(error => setSettingsError(error instanceof Error ? error.message : 'Não foi possível abrir as configurações.')); }, [section, profilePanel, leadershipSettings]);
   useEffect(() => { loadDashboardInsights(role, activeClassId).then(setDashboardInsights).catch(() => undefined); }, [role, activeClassId]);
-  const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
-  const scope = role === 'diretor' && activeManagedClass ? activeManagedClass.name : leadership.scope;
+  const roleName = role === 'diretor' ? 'Diretor de classe' : role === 'professor' ? 'Professor da classe' : role === 'coordenador' ? 'Coordenador distrital' : 'Administrador geral';
+  const scope = (role === 'diretor' || role === 'professor') && activeManagedClass ? activeManagedClass.name : leadership.scope;
   const metrics = leadership.metrics.map((item, index) => [index === 1 ? String(dashboardInsights.pending) : index === 2 ? String(dashboardInsights.recent) : item[0], index === 1 ? 'pendências' : index === 2 ? 'ações em 7 dias' : item[1], [colors.tealMedium, colors.gold, colors.coral][index]]);
   const maxWeeklyActivity = Math.max(1, ...dashboardInsights.weeklyValues);
   const performSignOut = async () => { setSigningOut(true); try { await onExit(); } finally { setSigningOut(false); } };
   const relativeActivityTime = (date: Date) => { const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000)); if (minutes < 1) return 'agora'; if (minutes < 60) return `há ${minutes} min`; const hours = Math.floor(minutes / 60); if (hours < 24) return `há ${hours}h`; const days = Math.floor(hours / 24); return days === 1 ? 'ontem' : `há ${days} dias`; };
-  const actions = role === 'diretor'
+  const actions = role === 'diretor' || role === 'professor'
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', pendingClassEntries.length ? String(pendingClassEntries.length) : ''],
       ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', pendingQuizCorrections.length ? String(pendingQuizCorrections.length) : ''],
@@ -1210,6 +1215,8 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
         ['⚠', 'Solicitações de exclusão', 'Analisar privacidade e suspensão de contas', ''],
         ['⇩', 'Relatório geral', 'Indicadores consolidados do projeto', ''],
       ];
+
+  if (role === 'professor') actions.splice(0, 1);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1252,7 +1259,7 @@ export default function App() {
       if (!user) { setActiveRole(null); setAuthReady(true); return; }
       try {
         const savedRole = await getUserRole(user.uid);
-        setActiveRole(savedRole === 'director' ? 'diretor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
+        setActiveRole(savedRole === 'director' ? 'diretor' : savedRole === 'teacher' ? 'professor' : savedRole === 'coordinator' ? 'coordenador' : savedRole === 'admin' ? 'admin' : 'adolescente');
       } catch { setActiveRole(null); }
       setAuthReady(true);
     });
@@ -1265,6 +1272,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  quizAnswerReview: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F5F8F6', borderRadius: 15, padding: 14, marginTop: 9, borderWidth: 1, borderColor: '#DCE7E2' },
+  quizAnswerNumber: { width: 28, height: 28, borderRadius: 14, textAlign: 'center', textAlignVertical: 'center', backgroundColor: colors.teal, color: colors.white, fontWeight: '900', fontSize: 12 },
+  quizAnswerText: { color: colors.teal, fontSize: 13, lineHeight: 19, marginTop: 5, backgroundColor: colors.white, borderRadius: 10, padding: 10, overflow: 'hidden' },
   confirmationCard: { backgroundColor: '#FFF7E8', borderRadius: 20, borderWidth: 2, borderColor: colors.gold, padding: 18, marginVertical: 14 },
   safe: { flex: 1, backgroundColor: colors.sage },
   welcomeSafe: { flex: 1, backgroundColor: colors.teal, overflow: 'hidden' },
