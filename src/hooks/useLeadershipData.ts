@@ -61,7 +61,7 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
 }
 
 export function useClassManagement(selectedClassId?: string) {
-  const [state, setState] = useState<{ classId: string; inviteCode: string; members: ClassMember[] }>({ classId: '', inviteCode: '', members: [] });
+  const [state, setState] = useState<{ classId: string; inviteCode: string; members: ClassMember[]; error: string }>({ classId: '', inviteCode: '', members: [], error: '' });
   useEffect(() => {
     const user = auth?.currentUser;
     if (!firebaseEnabled || !db || !user) return;
@@ -69,12 +69,11 @@ export function useClassManagement(selectedClassId?: string) {
     let unsubscribe: () => void = () => {};
     getManagedClass(selectedClassId).then(result => {
       if (!active) return;
-      setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members });
-      const equivalentIds = result.equivalentClassIds?.slice(0, 10) ?? (result.classId ? [result.classId] : []);
-      if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', equivalentIds.length > 1 ? 'in' : '==', equivalentIds.length > 1 ? equivalentIds : result.classId), where('active', '==', true), limit(100)), snapshot => {
-        setState(current => ({ ...current, members: snapshot.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) }));
-      });
-    }).catch(() => undefined);
+      setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members, error: '' });
+      if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', '==', result.classId), where('active', '==', true), limit(100)), snapshot => {
+        setState(current => ({ ...current, error: '', members: snapshot.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) }));
+      }, error => setState(current => ({ ...current, error: error.message })));
+    }).catch(error => setState(current => ({ ...current, error: error instanceof Error ? error.message : 'Não foi possível carregar os membros.' })));
     return () => { active = false; unsubscribe(); };
   }, [selectedClassId]);
   return state;
