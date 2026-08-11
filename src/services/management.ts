@@ -431,8 +431,8 @@ export async function getManagedClass(classId?: string) {
   if (classes.empty) return { classId: '', className: '', inviteCode: '', members: [] };
   const selected = classes.docs[0];
   const [invites, members] = await Promise.all([
-    getDocs(query(collection(db, 'classInvites'), where('classId', '==', selected.id), limit(1))),
+    getDoc(doc(db, 'classInvites', selected.id)),
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true), limit(100))),
   ]);
-  return { classId: selected.id, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: members.docs.map(item => ({ id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') })) };
+  return { classId: selected.id, className: selected.data().name, inviteCode: invites.data()?.inviteCode ?? '', members: members.docs.map(item => ({ id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') })) };
 }
