@@ -35,7 +35,8 @@ export async function getPresenceScenario(classId: string): Promise<{ setting: s
   const legacy = snapshot.data()?.presenceTheme as string | undefined;
   const legacyMap: Record<string, string> = { mountain: 'scenario-1', ocean: 'scenario-11', journey: 'scenario-21', garden: 'scenario-31' };
   const setting = String(snapshot.data()?.presenceScenario ?? legacyMap[legacy ?? ''] ?? 'auto');
-  return { setting, scenario: resolvePresenceScenario(setting, classId) };
+  const custom = snapshot.data()?.customPresenceScenario as PresenceScenario | undefined;
+  return { setting, scenario: setting === 'custom' && custom ? custom : resolvePresenceScenario(setting, classId) };
 }
 
 export async function updatePresenceScenario(setting: string, selectedClassId?: string) {
@@ -46,4 +47,15 @@ export async function updatePresenceScenario(setting: string, selectedClassId?: 
   const selected = selectedClassId ? directed.docs.find(item => item.id === selectedClassId) : directed.docs[0];
   if (!selected) throw new Error('A base selecionada não está vinculada à sua conta.');
   await updateDoc(doc(db, 'classes', selected.id), { presenceScenario: setting });
+}
+
+export async function importPresenceScenario(scenario: PresenceScenario, selectedClassId?: string) {
+  if (!db || !auth?.currentUser) throw new Error('Entre novamente para importar o cenário.');
+  if (!scenario.name.trim() || !scenario.intro.trim() || !scenario.goal.trim()) throw new Error('O cenário precisa de nome, descrição e meta final.');
+  const directed = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(10)));
+  const selected = selectedClassId ? directed.docs.find(item => item.id === selectedClassId) : directed.docs[0];
+  if (!selected) throw new Error('A base selecionada não está vinculada à sua conta.');
+  const normalized: PresenceScenario = { ...scenario, id: 'custom', world: scenario.world || 'Personalizado', icon: scenario.icon || '✨', color: scenario.color || '#E3F0D8', accent: scenario.accent || '#16504D' };
+  await updateDoc(doc(db, 'classes', selected.id), { presenceScenario: 'custom', customPresenceScenario: normalized });
+  return normalized;
 }

@@ -185,7 +185,7 @@ service cloud.firestore {
     }
 
     match /weeklyContent/{contentId} {
-      allow read: if memberOf(resource.data.classId);
+      allow read: if memberOf(resource.data.classId) || directorOf(resource.data.classId);
       allow create: if directorOf(request.resource.data.classId);
       allow update, delete: if directorOf(resource.data.classId);
     }

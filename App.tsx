@@ -35,7 +35,7 @@ import { createCoordinatorStructure, createInitialStructure, listStructures, typ
 import { useLeadershipProfile } from './src/hooks/useLeadershipProfile';
 import { useStudentProfile } from './src/hooks/useStudentProfile';
 import { useStudentProgress } from './src/hooks/useStudentProgress';
-import { getPresenceScenario, presenceScenarios, resolvePresenceScenario, updatePresenceScenario, type PresenceScenario } from './src/services/presenceTheme';
+import { getPresenceScenario, importPresenceScenario, presenceScenarios, resolvePresenceScenario, updatePresenceScenario, type PresenceScenario } from './src/services/presenceTheme';
 import { getDistrictRankings, type DistrictRankings } from './src/services/rankings';
 import { listClassEngagement, listEngagementFollowUps, recordEngagementFollowUp, resolveEngagementFollowUp, type EngagementFollowUp, type EngagementMember, type EngagementOutcome } from './src/services/engagement';
 import { useWeeklyJourney, verseOfTheDay } from './src/hooks/useWeeklyJourney';
@@ -911,6 +911,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
   const [editingActivityId, setEditingActivityId] = useState('');
   const [selectedScenario, setSelectedScenario] = useState('auto');
   const [scenarioPreviewIndex, setScenarioPreviewIndex] = useState(0);
+  const [customScenario, setCustomScenario] = useState<PresenceScenario>({ id: 'custom', world: 'Personalizado', name: '', icon: '✨', goal: '', intro: '', color: '#E3F0D8', accent: '#16504D' });
   const [engagementMembers, setEngagementMembers] = useState<EngagementMember[]>([]);
   const [engagementClassId, setEngagementClassId] = useState('');
   const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'regular'>('all');
@@ -1015,7 +1016,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
       if (firebaseEnabled && isQuizRanking) { const result = await publishLatestQuizRanking(selectedClassId); setMemberNotice(`Ranking publicado para ${result.entries} participante(s)`); }
       if (firebaseEnabled && isChallengeCreation) { if (!challengePhoto?.url) throw new Error('Adicione a foto que comprova o desafio cumprido.'); await submitClassChallenge({ classId: selectedClassId, title: lessonTitle, description: challengeDescription, evidence: challengeEvidence, evidenceUrl: challengePhoto.url }); setDirectedChallenges(await listDirectedChallenges(selectedClassId)); setMemberNotice('Desafio enviado ao coordenador, que definirá os pontos'); }
       if (firebaseEnabled && isClassActivity) { const input = { title: lessonTitle, description: activityDescription, location: eventLocation, dateLabel: eventDate, points: Number(activityPoints) || 20 }; if (editingActivityId) { await updateClassActivity(editingActivityId, input); setEditingActivityId(''); setMemberNotice('Atividade atualizada'); } else { await createClassActivity({ classId: selectedClassId, ...input }); setMemberNotice('Atividade publicada para a sua base'); } setDirectedActivities(await listDirectedActivities(selectedClassId)); }
-      if (firebaseEnabled && isPresenceTheme) { await updatePresenceScenario(selectedScenario, selectedClassId); setMemberNotice(selectedScenario === 'auto' ? 'Rotação automática ativada para a base' : 'Cenário aplicado para toda a base'); }
+      if (firebaseEnabled && isPresenceTheme) { if (selectedScenario === 'custom') await importPresenceScenario(customScenario, selectedClassId); else await updatePresenceScenario(selectedScenario, selectedClassId); setMemberNotice(selectedScenario === 'auto' ? 'Rotação automática ativada para a base' : 'Cenário aplicado para toda a base'); }
       setSaved(true);
     } catch (error) { setActionError(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
   };
@@ -1048,6 +1049,7 @@ function ManagementDetail({ title, role, selectedClassId, onBack }: { title: str
       <BackButton onPress={onBack} />
       <Text style={styles.pageEyebrow}>GESTÃO DA TURMA</Text><Text style={styles.pageTitle}>{title}</Text>
       <Text style={styles.pageIntro}>{isApproval ? 'Analise os itens pendentes e registre sua decisão.' : 'Prepare as informações que ficarão disponíveis para a turma.'}</Text>
+      {isPresenceTheme && <View style={styles.formCard}><Text style={styles.sectionTitle}>Importar cenário próprio</Text><Text style={styles.manageCopy}>Monte uma experiência exclusiva para a sua base e confira a prévia antes de aplicar.</Text><Text style={styles.authLabel}>NOME DO CENÁRIO</Text><TextInput value={customScenario.name} onChangeText={name => setCustomScenario(current => ({ ...current, name }))} placeholder="Ex.: Caminho da Promessa" placeholderTextColor="#8A9892" style={styles.authInput} /><View style={styles.memberActions}><View style={styles.flex}><Text style={styles.authLabel}>SÍMBOLO</Text><TextInput value={customScenario.icon} onChangeText={icon => setCustomScenario(current => ({ ...current, icon }))} placeholder="✨" placeholderTextColor="#8A9892" style={styles.authInput} /></View><View style={styles.flex}><Text style={styles.authLabel}>META FINAL</Text><TextInput value={customScenario.goal} onChangeText={goal => setCustomScenario(current => ({ ...current, goal }))} placeholder="Ex.: CHEGADA" placeholderTextColor="#8A9892" style={styles.authInput} /></View></View><Text style={styles.authLabel}>MENSAGEM DA JORNADA</Text><TextInput value={customScenario.intro} onChangeText={intro => setCustomScenario(current => ({ ...current, intro }))} placeholder="Explique como cada presença faz a turma avançar." placeholderTextColor="#8A9892" style={styles.authInput} multiline /><View style={styles.memberActions}><View style={styles.flex}><Text style={styles.authLabel}>COR DO FUNDO</Text><TextInput value={customScenario.color} onChangeText={color => setCustomScenario(current => ({ ...current, color }))} placeholder="#E3F0D8" placeholderTextColor="#8A9892" style={styles.authInput} /></View><View style={styles.flex}><Text style={styles.authLabel}>COR DE DESTAQUE</Text><TextInput value={customScenario.accent} onChangeText={accent => setCustomScenario(current => ({ ...current, accent }))} placeholder="#16504D" placeholderTextColor="#8A9892" style={styles.authInput} /></View></View><View style={[styles.scenarioPreview, { backgroundColor: customScenario.color || '#E3F0D8' }]}><Text style={styles.scenarioPreviewIcon}>{customScenario.icon || '✨'}</Text><Text style={styles.challengeTitle}>{customScenario.name || 'Seu cenário aparecerá aqui'}</Text><Text style={styles.manageCopy}>{customScenario.intro || 'A mensagem da jornada será exibida aos adolescentes.'}</Text><Text style={[styles.challengeStatus, { color: customScenario.accent || '#16504D' }]}>Meta final: {customScenario.goal || 'DEFINIR'}</Text></View><Pressable style={[styles.memberActionButton, selectedScenario === 'custom' && styles.themeCardActive]} onPress={() => setSelectedScenario('custom')}><Text style={styles.memberActionText}>{selectedScenario === 'custom' ? '✓ Cenário próprio selecionado' : 'Usar este cenário próprio'}</Text></Pressable></View>}
       {isContent && <View>
         <View style={styles.formCard}><Text style={styles.sectionTitle}>{editingContentId ? 'Editar conteúdo semanal' : 'Nova publicação semanal'}</Text><Text style={styles.manageCopy}>{editingContentId ? 'Troque somente o que precisa e publique a versão corrigida.' : 'A mesma semana será atualizada, sem criar publicações duplicadas.'}</Text>{editingContentId && <Pressable onPress={() => { setEditingContentId(''); setLessonPdf(null); setBookPdf(null); }}><Text style={styles.skipLink}>Cancelar edição</Text></Pressable>}</View>
         <AuthField label="Título da lição" placeholder="Título da semana" value={lessonTitle} onChangeText={setLessonTitle} />
@@ -1156,6 +1158,10 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const [activeClassId, setActiveClassId] = useState('');
   const [showClassPicker, setShowClassPicker] = useState(false);
   const pendingClassEntries = usePendingApprovals(role === 'diretor' ? 'classJoinRequest' : null, activeClassId);
+  const pendingQuizCorrections = usePendingApprovals(role === 'diretor' ? 'quizAttempt' : null, activeClassId);
+  const pendingStudyRecords = usePendingApprovals(role === 'diretor' ? 'studyRecord' : null, activeClassId);
+  const pendingAttendance = usePendingApprovals(role === 'diretor' ? 'attendance' : null, activeClassId);
+  const pendingFlashcards = usePendingApprovals(role === 'diretor' ? 'flashcard' : null, activeClassId);
   useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
   const activeManagedClass = leadership.managedClasses.find(item => item.id === activeClassId) ?? leadership.managedClasses[0];
   const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
@@ -1171,15 +1177,15 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const actions = role === 'diretor'
     ? [
       ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', pendingClassEntries.length ? String(pendingClassEntries.length) : ''],
-      ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
+      ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', pendingQuizCorrections.length ? String(pendingQuizCorrections.length) : ''],
       ['🏆', 'Publicar ranking semanal', 'Liberar notas e placar para a turma', ''],
       ['★', 'Encerrar período', 'Relatório trimestral e melhores do ano', ''],
       ['▤', 'Conteúdo semanal', 'Publicar lição e livro por turma', ''],
       ['?', 'Quiz semanal', 'Criar perguntas e programar liberação', ''],
-      ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', ''],
-      ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', ''],
+      ['✓', 'Avaliar resumos', 'Notas privadas dos adolescentes', pendingStudyRecords.length ? String(pendingStudyRecords.length) : ''],
+      ['⚑', 'Aprovar presenças', 'Validar fotos enviadas na igreja', pendingAttendance.length ? String(pendingAttendance.length) : ''],
       ['◉', 'Acompanhamento e risco', 'Identificar queda de participação', ''],
-      ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', ''],
+      ['✦', 'Moderar flashcards', 'Aprovar cartões enviados pela turma', pendingFlashcards.length ? String(pendingFlashcards.length) : ''],
       ['◆', 'Desafio mensal', 'Publicar evidência para o distrito', ''],
       ['⚑', 'Atividades externas', 'Criar programações para a própria base', ''],
       ['🏔️', 'Tema da presença', 'Escolher a jornada trimestral da base', ''],
