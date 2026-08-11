@@ -19,6 +19,7 @@ import { auth, cloudFunctions, db } from '../config/firebase';
 import { uploadPrivateFile } from '../config/supabase';
 import type { StudyRecord } from '../domain/models';
 import type { LeadershipReport, Quiz, QuizResult } from '../domain/models';
+import { getEquivalentClassIds } from './classAliases';
 
 const requireFirestore = () => {
   if (!db) throw new Error('Firebase ainda não foi configurado.');
@@ -72,13 +73,9 @@ export async function validateClassInviteCode(inviteCode: string) {
 
 export async function listWeeklyContent(classId: string) {
   const firestore = requireFirestore();
-  const result = await getDocs(query(
-    collection(firestore, 'weeklyContent'),
-    where('classId', '==', classId),
-    orderBy('publishedAt', 'desc'),
-    limit(13),
-  ));
-  return result.docs.filter(item => item.data().archived !== true).map(item => ({ id: item.id, ...(item.data() as { title?: string }) }));
+  const classIds = await getEquivalentClassIds(classId);
+  const results = await Promise.all(classIds.map(id => getDocs(query(collection(firestore, 'weeklyContent'), where('classId', '==', id), orderBy('publishedAt', 'desc'), limit(13)))));
+  return results.flatMap(result => result.docs).filter(item => item.data().archived !== true).sort((a, b) => Number(b.data().publishedAt?.seconds ?? 0) - Number(a.data().publishedAt?.seconds ?? 0)).slice(0, 13).map(item => ({ id: item.id, ...(item.data() as { title?: string }) }));
 }
 
 export async function saveStudy(input: Omit<StudyRecord, 'id' | 'createdAt'> & { userName?: string }) {
@@ -146,9 +143,10 @@ export async function reviewAttendance(recordId: string, reviewerId: string, app
 
 export async function getWeeklyQuiz(classId: string) {
   const firestore = requireFirestore();
-  const result = await getDocs(query(collection(firestore, 'quizzes'), where('classId', '==', classId), where('active', '==', true), orderBy('releaseAt', 'desc'), limit(10)));
+  const classIds = await getEquivalentClassIds(classId);
+  const results = await Promise.all(classIds.map(id => getDocs(query(collection(firestore, 'quizzes'), where('classId', '==', id), where('active', '==', true), orderBy('releaseAt', 'desc'), limit(10)))));
   const now = Date.now();
-  const available = result.docs.find(item => Number(item.data().releaseAt ?? 0) <= now && Number(item.data().closesAt ?? Number.MAX_SAFE_INTEGER) > now);
+  const available = results.flatMap(result => result.docs).sort((a, b) => Number(b.data().releaseAt ?? 0) - Number(a.data().releaseAt ?? 0)).find(item => Number(item.data().releaseAt ?? 0) <= now && Number(item.data().closesAt ?? Number.MAX_SAFE_INTEGER) > now);
   return available ? { id: available.id, ...available.data() } as unknown as Quiz : null;
 }
 

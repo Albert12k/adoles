@@ -6,11 +6,18 @@ service cloud.firestore {
     function roleIs(role) { return signedIn() && profile().role == role && profile().active != false; }
     function admin() { return roleIs('admin'); }
     function coordinatorOf(districtId) { return admin() || (roleIs('coordinator') && profile().districtId == districtId); }
+    function equivalentToProfileClass(classId) {
+      let linked = get(/databases/$(database)/documents/classes/$(profile().classIds[0])).data;
+      let target = get(/databases/$(database)/documents/classes/$(classId)).data;
+      return ('classIds' in profile()) && profile().classIds.size() > 0 &&
+        linked.churchId == target.churchId && linked.ageGroup == target.ageGroup && linked.name == target.name;
+    }
     function directorOf(classId) { return admin() || (roleIs('director') &&
       ((('classIds' in profile()) && classId in profile().classIds) ||
+       equivalentToProfileClass(classId) ||
        (('directorIds' in get(/databases/$(database)/documents/classes/$(classId)).data) &&
         request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.directorIds))); }
-    function memberOf(classId) { return signedIn() && ('classIds' in profile()) && classId in profile().classIds; }
+    function memberOf(classId) { return signedIn() && ('classIds' in profile()) && (classId in profile().classIds || equivalentToProfileClass(classId)); }
 
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || admin() ||

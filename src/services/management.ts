@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, increment, limit, onSnapshot, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, cloudFunctions, db } from '../config/firebase';
+import { getEquivalentClassIds } from './classAliases';
 
 const requireFunctions = () => {
   if (!cloudFunctions) throw new Error('Firebase ainda não foi configurado.');
@@ -430,13 +431,18 @@ export async function getManagedClass(classId?: string) {
     : await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(1)));
   if (classes.empty) return { classId: '', className: '', inviteCode: '', members: [] };
   const selected = classes.docs[0];
+  const equivalentIds = await getEquivalentClassIds(selected.id);
+  const memberResults = await Promise.all(equivalentIds.map(id => getDocs(query(collection(db!, 'classMembers'), where('classId', '==', id), where('active', '==', true), limit(100)))));
+  const requestResults = await Promise.all(equivalentIds.map(id => getDocs(query(collection(db!, 'classJoinRequests'), where('classId', '==', id), limit(100)))));
   const [invites, members, joinRequests] = await Promise.all([
     getDocs(query(collection(db, 'classInvites'), where('classId', '==', selected.id), limit(1))),
     getDocs(query(collection(db, 'classMembers'), where('classId', '==', selected.id), where('active', '==', true), limit(100))),
     getDocs(query(collection(db, 'classJoinRequests'), where('classId', '==', selected.id), limit(100))),
   ]);
-  const memberMap = new Map(members.docs.map(item => [String(item.data().userId), { id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') }]));
-  const missingApproved = joinRequests.docs.filter(item => item.data().status === 'approved' && item.data().userId && !memberMap.has(String(item.data().userId)));
+  const allMembers = [...members.docs, ...memberResults.flatMap(result => result.docs)];
+  const allRequests = [...joinRequests.docs, ...requestResults.flatMap(result => result.docs)];
+  const memberMap = new Map(allMembers.map(item => [String(item.data().userId), { id: String(item.data().userId), name: String(item.data().name ?? 'Adolescente'), role: String(item.data().role ?? 'student') }]));
+  const missingApproved = allRequests.filter(item => item.data().status === 'approved' && item.data().userId && !memberMap.has(String(item.data().userId)));
   if (missingApproved.length) {
     const repair = writeBatch(db);
     missingApproved.forEach(item => {
@@ -448,5 +454,5 @@ export async function getManagedClass(classId?: string) {
     });
     await repair.commit();
   }
-  return { classId: selected.id, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: [...memberMap.values()] };
+  return { classId: selected.id, equivalentClassIds: equivalentIds, className: selected.data().name, inviteCode: invites.docs[0]?.data().inviteCode ?? '', members: [...memberMap.values()] };
 }

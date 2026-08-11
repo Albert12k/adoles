@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { auth, db, firebaseEnabled } from '../config/firebase';
 import { getManagedClass } from '../services/management';
+import { getEquivalentClassIds } from '../services/classAliases';
 
 export type ApprovalType = 'attendance' | 'challenge' | 'roleRequest' | 'classJoinRequest' | 'studyRecord' | 'quizAttempt' | 'flashcard' | 'leadershipTransfer';
 export interface ApprovalItem { id: string; name: string; copy: string; evidenceUrl?: string; }
@@ -18,10 +19,11 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
     (async () => {
       const profile = (await getDoc(doc(db!, 'users', user.uid))).data();
       if (!profile || !active) return;
+      const selectedIds = selectedClassId ? await getEquivalentClassIds(selectedClassId) : [];
       let approvalsQuery;
       if (type === 'attendance' || type === 'studyRecord' || type === 'quizAttempt') {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
-        const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
+        const ids = selectedIds.length ? selectedIds : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = type === 'attendance' ? query(collection(db!, 'attendance'), where('classId', 'in', ids), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(30)) : type === 'quizAttempt' ? query(collection(db!, 'quizAttempts'), where('classId', 'in', ids), where('status', '==', 'pending'), limit(30)) : query(collection(db!, 'studyRecords'), where('classId', 'in', ids), where('feedbackVisible', '==', false), limit(30));
       } else if (type === 'classJoinRequest' || type === 'flashcard') {
@@ -29,10 +31,12 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
           approvalsQuery = query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('status', '==', 'pending'), limit(100));
         } else {
         const directed = await getDocs(query(collection(db!, 'classes'), where('directorIds', 'array-contains', user.uid), limit(10)));
-        const ids = selectedClassId ? [selectedClassId] : directed.docs.map(item => item.id);
+        const ids = selectedIds.length ? selectedIds : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = selectedClassId
-          ? query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', '==', selectedClassId), limit(100))
+          ? selectedIds.length === 1
+            ? query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', '==', selectedIds[0]), limit(100))
+            : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', selectedIds.slice(0, 10)), limit(100))
           : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), limit(100));
         }
       } else if (type === 'leadershipTransfer') {
@@ -64,7 +68,8 @@ export function useClassManagement(selectedClassId?: string) {
     getManagedClass(selectedClassId).then(result => {
       if (!active) return;
       setState({ classId: result.classId, inviteCode: result.inviteCode, members: result.members });
-      if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', '==', result.classId), where('active', '==', true), limit(100)), snapshot => {
+      const equivalentIds = result.equivalentClassIds?.slice(0, 10) ?? (result.classId ? [result.classId] : []);
+      if (result.classId) unsubscribe = onSnapshot(query(collection(db!, 'classMembers'), where('classId', equivalentIds.length > 1 ? 'in' : '==', equivalentIds.length > 1 ? equivalentIds : result.classId), where('active', '==', true), limit(100)), snapshot => {
         setState(current => ({ ...current, members: snapshot.docs.map(item => ({ id: item.data().userId, name: item.data().name, role: item.data().role })) }));
       });
     }).catch(() => undefined);
