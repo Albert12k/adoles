@@ -375,7 +375,13 @@ export async function sendAttendanceReminder(selectedClassId?: string) {
   return { notified: progress.missing.length };
 }
 
-export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string }) {
+export async function listMemberTransferTargets(classId: string) {
+  if (!db || !auth?.currentUser) return [];
+  const result = await getDocs(query(collection(db, 'classes'), where('directorIds', 'array-contains', auth.currentUser.uid), limit(20)));
+  return result.docs.filter(item => item.id !== classId && item.data().active !== false).map(item => ({ id: item.id, name: String(item.data().name ?? 'Base'), ageGroup: String(item.data().ageGroup ?? 'adolescentes') }));
+}
+
+export async function manageClassMembership(input: { action: 'regenerateCode' | 'removeMember' | 'transferMember' | 'transferLeadership' | 'revokeDirector'; classId: string; targetUserId?: string; targetClassId?: string }) {
   if (input.action === 'regenerateCode') {
     if (!db || !auth?.currentUser) throw new Error('Entre novamente para continuar.');
     const code = `VIVA-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
@@ -399,6 +405,21 @@ export async function manageClassMembership(input: { action: 'regenerateCode' | 
       if (!member.exists()) throw new Error('Membro não encontrado nesta classe.');
       transaction.update(doc(db!, 'users', input.targetUserId!), { classIds: arrayRemove(input.classId) });
       transaction.update(memberRef, { active: false, removedAt: serverTimestamp(), removedBy: auth!.currentUser!.uid });
+    });
+    return { success: true };
+  }
+  if (input.action === 'transferMember') {
+    if (!db || !auth?.currentUser || !input.targetUserId || !input.targetClassId) throw new Error('Escolha o adolescente e a turma de destino.');
+    await runTransaction(db, async transaction => {
+      const currentMemberRef = doc(db!, 'classMembers', `${input.classId}_${input.targetUserId}`);
+      const targetMemberRef = doc(db!, 'classMembers', `${input.targetClassId}_${input.targetUserId}`);
+      const userRef = doc(db!, 'users', input.targetUserId!);
+      const [currentMember, targetClass] = await Promise.all([transaction.get(currentMemberRef), transaction.get(doc(db!, 'classes', input.targetClassId!))]);
+      if (!currentMember.exists() || !currentMember.data().active) throw new Error('O adolescente não está ativo nesta turma.');
+      if (!targetClass.exists()) throw new Error('Não foi possível localizar a turma de destino.');
+      transaction.update(userRef, { classIds: [input.targetClassId], districtId: targetClass.data().districtId });
+      transaction.update(currentMemberRef, { active: false, transferredAt: serverTimestamp(), transferredBy: auth!.currentUser!.uid, transferredTo: input.targetClassId });
+      transaction.set(targetMemberRef, { classId: input.targetClassId, userId: input.targetUserId, name: currentMember.data().name ?? 'Adolescente', role: 'student', active: true, joinedAt: serverTimestamp(), transferredFrom: input.classId });
     });
     return { success: true };
   }

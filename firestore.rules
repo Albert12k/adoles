@@ -35,7 +35,7 @@ service cloud.firestore {
           ((request.resource.data.classIds.toSet().difference(resource.data.classIds.toSet()).size() == 1 &&
             directorOf(request.resource.data.classIds[request.resource.data.classIds.size() - 1])) ||
            (resource.data.classIds.toSet().difference(request.resource.data.classIds.toSet()).size() == 1 &&
-            resource.data.classIds.hasAny(profile().classIds))));
+            (resource.data.classIds.hasAny(profile().classIds) || directorOf(resource.data.classIds[0])))));
     }
 
     match /accountDeletionRequests/{userId} {
