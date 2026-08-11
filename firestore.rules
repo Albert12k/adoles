@@ -33,7 +33,8 @@ service cloud.firestore {
         (roleIs('director') && resource.data.role == 'student' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['classIds', 'districtId']) &&
           ((request.resource.data.classIds.toSet().difference(resource.data.classIds.toSet()).size() == 1 &&
-            request.resource.data.classIds.hasAny(profile().classIds)) ||
+            (request.resource.data.classIds.hasAny(profile().classIds) ||
+             equivalentToProfileClass(request.resource.data.classIds[request.resource.data.classIds.size() - 1]))) ||
            (resource.data.classIds.toSet().difference(request.resource.data.classIds.toSet()).size() == 1 &&
             resource.data.classIds.hasAny(profile().classIds))));
     }
