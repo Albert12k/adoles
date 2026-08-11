@@ -34,9 +34,11 @@ export function usePendingApprovals(type: ApprovalType | null, selectedClassId?:
         const ids = selectedIds.length ? selectedIds : directed.docs.map(item => item.id);
         if (!ids.length) return;
         approvalsQuery = selectedClassId
-          ? selectedIds.length === 1
-            ? query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', '==', selectedIds[0]), limit(100))
-            : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', selectedIds.slice(0, 10)), limit(100))
+          ? type === 'classJoinRequest'
+            ? query(collection(db!, 'classJoinRequests'), where('classId', '==', selectedClassId), where('status', '==', 'pending'), limit(100))
+            : selectedIds.length === 1
+              ? query(collection(db!, 'flashcards'), where('classId', '==', selectedIds[0]), limit(100))
+              : query(collection(db!, 'flashcards'), where('classId', 'in', selectedIds.slice(0, 10)), limit(100))
           : query(collection(db!, type === 'flashcard' ? 'flashcards' : 'classJoinRequests'), where('classId', 'in', ids), limit(100));
         }
       } else if (type === 'leadershipTransfer') {

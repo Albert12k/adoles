@@ -1148,6 +1148,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const leadership = useLeadershipProfile(role);
   const [activeClassId, setActiveClassId] = useState('');
   const [showClassPicker, setShowClassPicker] = useState(false);
+  const pendingClassEntries = usePendingApprovals(role === 'diretor' ? 'classJoinRequest' : null, activeClassId);
   useEffect(() => { if (role === 'diretor' && !activeClassId && leadership.managedClasses.length) setActiveClassId(leadership.managedClasses[0].id); }, [role, activeClassId, leadership.managedClasses]);
   const activeManagedClass = leadership.managedClasses.find(item => item.id === activeClassId) ?? leadership.managedClasses[0];
   const refreshActivity = async () => { setActivityLoading(true); setActivityError(''); try { setLeadershipActivity(await listLeadershipActivity(role, activeClassId)); } catch (error) { setActivityError(error instanceof Error ? error.message : 'Não foi possível carregar as atividades.'); } finally { setActivityLoading(false); } };
@@ -1162,7 +1163,7 @@ function ManagementApp({ role, onExit }: { role: Exclude<Role, 'adolescente'>; o
   const relativeActivityTime = (date: Date) => { const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000)); if (minutes < 1) return 'agora'; if (minutes < 60) return `há ${minutes} min`; const hours = Math.floor(minutes / 60); if (hours < 24) return `há ${hours}h`; const days = Math.floor(hours / 24); return days === 1 ? 'ontem' : `há ${days} dias`; };
   const actions = role === 'diretor'
     ? [
-      ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', ''],
+      ['♙', 'Aprovar entradas', 'Novos adolescentes aguardando entrada', pendingClassEntries.length ? String(pendingClassEntries.length) : ''],
       ['✓', 'Corrigir quizzes', 'Respostas aguardando correção', ''],
       ['🏆', 'Publicar ranking semanal', 'Liberar notas e placar para a turma', ''],
       ['★', 'Encerrar período', 'Relatório trimestral e melhores do ano', ''],
