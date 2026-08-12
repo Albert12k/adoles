@@ -356,6 +356,8 @@ function QuizScreen({ classId }: { classId: string }) {
     try { await submitQuizAnswers(quiz.id, answers.map(item => item ?? '')); setQuizStatus('pending'); }
     catch (error) { setQuizError(error instanceof Error ? error.message : 'Não foi possível enviar as respostas.'); }
   };
+  if (quizStatus === 'pending') return <View style={styles.pagePad}><View style={styles.quizWaitingHero}><View style={styles.quizWaitingIcon}><Text style={styles.quizWaitingIconText}>✓</Text></View><Text style={styles.pageEyebrow}>RESPOSTAS ENVIADAS</Text><Text style={styles.quizWaitingTitle}>Sua parte está concluída!</Text><Text style={styles.quizWaitingCopy}>O diretor ou professor recebeu suas respostas e fará a correção com atenção.</Text><View style={styles.quizWaitingSteps}><View style={styles.quizWaitingStepDone}><Text style={styles.quizWaitingStepNumber}>✓</Text><View style={styles.flex}><Text style={styles.manageTitle}>Quiz respondido</Text><Text style={styles.manageCopy}>Todas as fases foram enviadas com segurança.</Text></View></View><View style={styles.quizWaitingStep}><Text style={styles.quizWaitingStepNumber}>2</Text><View style={styles.flex}><Text style={styles.manageTitle}>Aguardando correção</Text><Text style={styles.manageCopy}>Você receberá o resultado quando a liderança publicar as notas.</Text></View></View></View><Text style={styles.quizWaitingHint}>Enquanto isso, continue estudando e participando das atividades da sua base.</Text></View></View>;
+  if (quizStatus === 'reviewed' && !resultPublished) return <View style={styles.pagePad}><View style={styles.quizWaitingHero}><View style={[styles.quizWaitingIcon, { backgroundColor: colors.gold }]}><Text style={styles.quizWaitingIconText}>★</Text></View><Text style={styles.pageEyebrow}>CORREÇÃO CONCLUÍDA</Text><Text style={styles.quizWaitingTitle}>Seu resultado está guardado.</Text><Text style={styles.quizWaitingCopy}>A liderança já corrigiu suas respostas. A nota e o ranking aparecerão quando forem publicados para toda a turma.</Text><View style={styles.successNotice}><Text style={styles.manageTitle}>🔒 Resultado privado por enquanto</Text></View></View></View>;
   return (
     <View style={styles.pagePad}>
       <View style={styles.quizHeader}>
@@ -1294,6 +1296,16 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  quizWaitingHero: { backgroundColor: colors.white, borderRadius: 28, padding: 26, alignItems: 'center', borderWidth: 1, borderColor: '#DCE7E2', elevation: 3, marginTop: 28 },
+  quizWaitingIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: colors.tealMedium, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 7, borderColor: '#DCEDE9' },
+  quizWaitingIconText: { color: colors.white, fontSize: 32, fontWeight: '900' },
+  quizWaitingTitle: { color: colors.ink, fontSize: 27, lineHeight: 34, fontWeight: '900', textAlign: 'center', marginTop: 8 },
+  quizWaitingCopy: { color: colors.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', maxWidth: 420, marginTop: 10 },
+  quizWaitingSteps: { width: '100%', marginTop: 24, gap: 10 },
+  quizWaitingStep: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.sage, borderRadius: 17, padding: 14, gap: 12 },
+  quizWaitingStepDone: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCEDE9', borderRadius: 17, padding: 14, gap: 12 },
+  quizWaitingStepNumber: { width: 32, height: 32, borderRadius: 16, textAlign: 'center', textAlignVertical: 'center', backgroundColor: colors.teal, color: colors.white, fontWeight: '900', overflow: 'hidden' },
+  quizWaitingHint: { color: colors.tealMedium, fontSize: 12, lineHeight: 18, fontWeight: '800', textAlign: 'center', marginTop: 22 },
   quizAnswerReview: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F5F8F6', borderRadius: 15, padding: 14, marginTop: 9, borderWidth: 1, borderColor: '#DCE7E2' },
   quizAnswerNumber: { width: 28, height: 28, borderRadius: 14, textAlign: 'center', textAlignVertical: 'center', backgroundColor: colors.teal, color: colors.white, fontWeight: '900', fontSize: 12 },
   quizAnswerText: { color: colors.teal, fontSize: 13, lineHeight: 19, marginTop: 5, backgroundColor: colors.white, borderRadius: 10, padding: 10, overflow: 'hidden' },

@@ -42,7 +42,11 @@ export async function resolvePrivateFileUrl(resource: string, expiresIn = 3600) 
     headers: await authenticatedHeaders('application/json'),
     body: JSON.stringify({ expiresIn }),
   });
-  if (!response.ok) throw new Error(`Não foi possível abrir o arquivo (${response.status}).`);
+  if (!response.ok) {
+    const message = await response.text();
+    if (response.status === 400 || response.status === 403) throw new Error('Sua conta ainda não tem permissão para ler os PDFs da turma no armazenamento.');
+    throw new Error(`Não foi possível abrir o arquivo (${response.status}). ${message.slice(0, 120)}`);
+  }
   const data = await response.json() as { signedURL?: string; signedUrl?: string };
   const signed = data.signedURL ?? data.signedUrl;
   if (!signed) throw new Error('O armazenamento não retornou um endereço temporário.');
