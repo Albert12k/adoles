@@ -5,5 +5,5 @@ drop policy if exists "viva_weekly_content_read" on storage.objects;
 create policy "viva_weekly_content_read"
 on storage.objects
 for select
-to authenticated
-using (bucket_id = 'weekly-content');
+to public
+using (bucket_id = 'weekly-content' and auth.uid() is not null);

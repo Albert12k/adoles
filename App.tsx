@@ -308,7 +308,8 @@ function AttendanceScreen({ classId, userName }: { classId: string; userName: st
       <Text style={styles.pageEyebrow}>TRIMESTRE {quarter} · SEMANA {currentWeek}</Text>
       <Text style={styles.pageTitle}>{presenceScenario.icon} {presenceScenario.name}</Text>
       <Text style={styles.pageIntro}>{presenceScenario.intro}</Text>
-      <View style={[styles.mountainCard, { backgroundColor: presenceScenario.color }]}>
+      <View style={[styles.presenceJourneyCard, { backgroundColor: presenceScenario.color }]}><View style={styles.presenceJourneyTop}><View><Text style={styles.authLabel}>SUA JORNADA</Text><Text style={styles.presenceJourneyTitle}>Semana {currentWeek} de 13</Text></View><View style={[styles.presenceGoalBadge, { backgroundColor: presenceScenario.accent }]}><Text style={styles.presenceGoalText}>{presenceScenario.icon} {presenceScenario.goal}</Text></View></View><View style={styles.presenceProgressTrack}><View style={[styles.presenceProgressFill, { width: `${Math.round(attendanceCount / 13 * 100)}%`, backgroundColor: presenceScenario.accent }]} /></View><View style={styles.presenceWeeks}>{Array.from({ length: 13 }, (_, index) => index + 1).map(week => <View key={week} style={[styles.presenceWeek, approvedWeeks.includes(week) && { backgroundColor: presenceScenario.accent, borderColor: presenceScenario.accent }, week === currentWeek && styles.presenceWeekCurrent]}><Text style={[styles.presenceWeekText, approvedWeeks.includes(week) && { color: colors.white }, week === currentWeek && !approvedWeeks.includes(week) && { color: colors.coral }]}>{approvedWeeks.includes(week) ? '✓' : week}</Text></View>)}</View><View style={styles.presenceCurrentCard}><View style={styles.presenceCurrentIcon}><Text style={styles.presenceCurrentIconText}>{currentStatus === 'approved' ? '✓' : currentStatus === 'pending' ? '⌛' : 'D'}</Text></View><View style={styles.flex}><Text style={styles.manageTitle}>{currentStatus === 'approved' ? 'Presença confirmada nesta semana' : currentStatus === 'pending' ? 'Foto em análise' : 'Continue sua jornada'}</Text><Text style={styles.manageCopy}>{currentStatus === 'approved' ? 'Você avançou mais uma etapa.' : currentStatus === 'pending' ? 'A liderança está conferindo sua presença.' : 'Envie a foto da semana para avançar.'}</Text></View></View></View>
+      {false && <View style={[styles.mountainCard, { backgroundColor: presenceScenario.color }]}>
         <View style={[styles.summit, { backgroundColor: presenceScenario.accent }]}><Text style={[styles.summitText, { color: colors.white }]}>{presenceScenario.icon} {presenceScenario.goal}</Text></View>
         <View style={[styles.trail, { backgroundColor: presenceScenario.accent, opacity: 0.35 }]} />
         {[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((week, index) => (
@@ -316,7 +317,7 @@ function AttendanceScreen({ classId, userName }: { classId: string; userName: st
             <Text style={styles.checkpointText}>{approvedWeeks.includes(week) ? '✓' : week === currentWeek ? 'D' : week}</Text>
           </View>
         ))}
-      </View>
+      </View>}
       <View style={styles.statsRow}>
         <View style={styles.stat}><Text style={styles.statValue}>{attendanceCount}</Text><Text style={styles.cardCaption}>presenças</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>{Math.round((attendanceCount / 13) * 100)}%</Text><Text style={styles.cardCaption}>do caminho</Text></View>
@@ -1296,6 +1297,20 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  presenceJourneyCard: { borderRadius: 25, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#FFFFFF99' },
+  presenceJourneyTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  presenceJourneyTitle: { color: colors.ink, fontSize: 22, fontWeight: '900', marginTop: 3 },
+  presenceGoalBadge: { borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 },
+  presenceGoalText: { color: colors.white, fontSize: 10, fontWeight: '900' },
+  presenceProgressTrack: { height: 10, borderRadius: 5, backgroundColor: '#FFFFFFAA', overflow: 'hidden', marginTop: 20 },
+  presenceProgressFill: { height: '100%', borderRadius: 5 },
+  presenceWeeks: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 9, marginTop: 20 },
+  presenceWeek: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFFBB', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  presenceWeekCurrent: { borderColor: colors.coral, borderWidth: 3, transform: [{ scale: 1.12 }] },
+  presenceWeekText: { color: colors.teal, fontSize: 10, fontWeight: '900' },
+  presenceCurrentCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFFCC', borderRadius: 17, padding: 13, marginTop: 20 },
+  presenceCurrentIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.coral, alignItems: 'center', justifyContent: 'center' },
+  presenceCurrentIconText: { color: colors.white, fontWeight: '900', fontSize: 14 },
   quizWaitingHero: { backgroundColor: colors.white, borderRadius: 28, padding: 26, alignItems: 'center', borderWidth: 1, borderColor: '#DCE7E2', elevation: 3, marginTop: 28 },
   quizWaitingIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: colors.tealMedium, alignItems: 'center', justifyContent: 'center', marginBottom: 20, borderWidth: 7, borderColor: '#DCEDE9' },
   quizWaitingIconText: { color: colors.white, fontSize: 32, fontWeight: '900' },
