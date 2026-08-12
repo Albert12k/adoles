@@ -98,6 +98,28 @@ function Progress({ value, color = colors.gold }: { value: number; color?: strin
   );
 }
 
+async function openProtectedDocument(resource: string) {
+  if (!resource) throw new Error('Este PDF ainda não foi publicado.');
+  if (Platform.OS === 'web') {
+    const popup = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    if (!popup) throw new Error('O navegador bloqueou a nova aba. Permita pop-ups para este aplicativo.');
+    popup.document.title = 'Abrindo PDF...';
+    popup.document.body.innerHTML = '<p style="font-family:Arial;padding:24px">Preparando o PDF com segurança...</p>';
+    try {
+      const url = await resolvePrivateFileUrl(resource);
+      popup.location.replace(url);
+    } catch (error) {
+      popup.close();
+      throw error;
+    }
+    return;
+  }
+  const url = await resolvePrivateFileUrl(resource);
+  const supported = await Linking.canOpenURL(url);
+  if (!supported) throw new Error('Este aparelho não possui um aplicativo disponível para abrir o PDF.');
+  await Linking.openURL(url);
+}
+
 function HomeScreen({ onNavigate, name, pending, classId, districtId }: { onNavigate: (tab: Tab) => void; name: string; pending: boolean; classId: string; districtId: string }) {
   const progress = useStudentProgress();
   const weekly = useWeeklyJourney(classId);
@@ -226,7 +248,7 @@ function StudyScreen({ classId, userName }: { classId: string; userName: string 
         ['bible', '✦', 'Bíblia', 'Escolha seu texto', 'Leitura livre', '#DCEDE9', ''],
         ['book', '▣', 'Livro', content?.title ?? 'Livro da semana', content?.bookPdfUrl ? 'Selecionar e abrir o PDF' : 'Ainda não disponível', '#FBE0D6', content?.bookPdfUrl],
       ].map(([source, icon, title, subtitle, meta, bg, url]) => (
-        <Pressable key={source} style={[styles.studyCard, studySource === source && styles.studyCardSelected]} onPress={() => { setStudySource(source as 'lesson' | 'bible' | 'book'); setCompleted(false); if (url) resolvePrivateFileUrl(url).then(Linking.openURL).catch(() => setStudyError('Não foi possível abrir este PDF.')); }}>
+        <Pressable key={source} style={[styles.studyCard, studySource === source && styles.studyCardSelected]} onPress={() => { setStudySource(source as 'lesson' | 'bible' | 'book'); setCompleted(false); setStudyError(''); if (url) openProtectedDocument(url).catch(error => setStudyError(error instanceof Error ? error.message : 'Não foi possível abrir este PDF.')); }}>
           <View style={[styles.studyIcon, { backgroundColor: bg }]}><Text style={styles.studyEmoji}>{icon}</Text></View>
           <View style={styles.flex}>
             <Text style={styles.studyLabel}>{title}</Text>
